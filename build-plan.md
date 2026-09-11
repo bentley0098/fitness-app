@@ -21,7 +21,7 @@ A few inputs still matter, though:
 
 - [x] Create Supabase project (chosen over Neon) — using `@supabase/supabase-js` directly rather than a raw Postgres connection string, see spec Section 3 addendum
 - [x] Create Nuxt app (`apps/web`) — ended up on Nuxt 4 (current major), Tailwind + Pinia + PWA modules installed
-- [ ] Set up Vercel project linked to the repo, add Supabase env vars — not done yet, everything so far tested locally
+- [x] Set up Vercel project linked to the repo (Root Directory `apps/web`, monorepo workspace install resolved automatically), env vars added (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, `MCP_BEARER_TOKEN` — notably not the Garmin credentials, which only the local bootstrap script ever needs). Deployed and verified: `/api/health`, `/api/today`, the Garmin sync cron, and the MCP endpoint all confirmed working against real data in production.
 - [x] Set up a private git repo
 - [x] Decide package layout: `apps/web` (Nuxt), `packages/engine` (rules engine)
 
@@ -112,14 +112,29 @@ Build last, per spec Section 9 — resist building this first, it's the tempting
 - **Real-data test:** hit `/api/cron/weekly-draft` for real — it read the actual `hold` verdict and wrote a genuine `pending` `plan_sessions` row (`weekly-target`, unclamped) plus its `plan_revisions` audit row. Then called `tools/call get_current_plan` over the actual MCP JSON-RPC protocol (`initialize` → `tools/list` → `tools/call`) and got that exact row back — proves the cron-writes/MCP-reads loop is real, not just unit-tested in isolation.
 - **Caught and fixed live:** appending two secrets to `.env` back-to-back merged them onto one line (missing newline) — one 401 down a debugging rabbit hole before the file structure turned out to be the actual bug, not the auth logic. Fixed; both tokens confirmed at their correct 64-char length now.
 
+### Addendum — minimal OAuth 2.1 server, for claude.ai's custom-connector UI
+
+The static `MCP_BEARER_TOKEN` works for manual/direct use (curl, Claude Code's own MCP config), but **claude.ai's consumer Custom Connector feature has no plain-header option** — it requires real OAuth (attempted Dynamic Client Registration against our server, which had none, hence the initial "couldn't register with sign-in service" failure). Built the minimum spec-compliant surface rather than skip mobile access:
+
+- [x] `/.well-known/oauth-protected-resource` (RFC 9728) and `/.well-known/oauth-authorization-server` (RFC 8414) — public discovery metadata, served at the true site root via `server/routes/` (not `/api/`, since well-known URIs are root-relative by convention)
+- [x] `/oauth/register` (RFC 7591 Dynamic Client Registration) — public clients only, no client secret; PKCE is what actually secures the flow instead
+- [x] `/oauth/authorize` — validates client_id/redirect_uri against what was registered (can't redirect on failure here — the redirect_uri itself is what's unverified), then renders a minimal login page. **This password prompt, not DCR, is the actual single-user gate** — anyone can register a client, but only whoever knows `MCP_OAUTH_PASSWORD` can turn that into a usable code.
+- [x] `/oauth/token` — authorization_code grant (PKCE S256 verified, codes single-use, 10-min expiry) and refresh_token grant (rotates on every use — old refresh token deleted the moment a new pair is issued, per OAuth 2.1's requirement for public clients)
+- [x] `/api/mcp` now accepts either the static bearer token *or* a valid OAuth access token — two auth paths, not a replacement. 401s carry a proper `WWW-Authenticate: Bearer resource_metadata="..."` header per RFC 9728, which is what lets a client's discovery flow actually find the metadata in the first place.
+- [x] **Full local test, every step:** discovery metadata correct → DCR registers a client → wrong password rejected (401) → correct password redirects with a code → wrong PKCE verifier rejected (400) → correct verifier issues a token pair → reusing the same code rejected (single-use enforced) → the issued access token successfully calls `tools/list` on `/api/mcp` → refresh rotation issues a new pair and immediately invalidates the old refresh token
+- [ ] Not yet done: deployed to production, `MCP_OAUTH_PASSWORD` not yet set on Vercel, and the actual claude.ai connector hasn't been retried against it yet
+
 ---
 
 ## Phase 6 — Hardening & deploy
 
-- [ ] Single env-var bearer token for auth (spec explicitly scopes out anything heavier for a single-user app)
-- [ ] Confirm the `pending`-status-plus-cron-sweep pattern is sufficient — no queue infra needed at this volume
-- [ ] Smoke-test the full loop once end-to-end: real Garmin sync (activities + health metrics) → engine verdict → MCP draft → approval → written back to `plan_sessions`
-- [ ] Add basic alerting on ingestion failures (Phase 1) and cron failures (Phase 5) — these are the two silent-failure points in the whole system
+**Deployed** to Vercel (`web-zeta-weld-pssnqojhvu.vercel.app` as of this writing). `vercel.json`'s crons are now live and will fire on their own daily schedule going forward — nothing further needed to make that happen.
+
+- [x] Bearer-token auth for both crons and MCP (two separate tokens, not one — see Phase 5's rationale)
+- [x] Confirmed the `pending`-status-plus-cron-sweep pattern is sufficient — no queue infra needed at this volume
+- [x] Smoke-tested real Garmin sync and MCP against the actual production deployment (not just local dev) — `/api/health`, `/api/today`, the sync cron, and MCP `initialize` all verified working with real Supabase data
+- [ ] **Not yet tested end-to-end in production:** `apply_revision`, and the weekly-draft cron running on Vercel's own schedule rather than triggered by hand
+- [ ] Add basic alerting on ingestion failures (Phase 1) and cron failures (Phase 5) — these are the two silent-failure points in the whole system. Currently: failures surface in the JSON response and Vercel's own function logs, nothing pushed anywhere
 
 ---
 

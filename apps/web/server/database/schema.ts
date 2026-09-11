@@ -91,6 +91,45 @@ export const garminTokens = pgTable("garmin_tokens", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Minimal single-user OAuth 2.1 authorization server for the MCP endpoint
+// (server/routes/oauth/*), so claude.ai's custom-connector UI — which
+// requires OAuth, not a plain bearer header — can complete its flow. Not
+// part of the core domain model.
+
+// Dynamic Client Registration (RFC 7591). Public clients only — no secret,
+// PKCE does the work a client secret would otherwise do.
+export const oauthClients = pgTable("oauth_clients", {
+  clientId: text("client_id").primaryKey(),
+  clientName: text("client_name"),
+  redirectUris: jsonb("redirect_uris").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Short-lived, single-use authorization codes (PKCE challenge stored here,
+// verified against code_verifier at the token endpoint).
+export const oauthCodes = pgTable("oauth_codes", {
+  code: text("code").primaryKey(),
+  clientId: text("client_id").notNull(),
+  redirectUri: text("redirect_uri").notNull(),
+  codeChallenge: text("code_challenge").notNull(),
+  codeChallengeMethod: text("code_challenge_method").notNull(),
+  resource: text("resource"),
+  used: boolean("used").notNull().default(false),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Access tokens are short-lived; refresh tokens rotate on every use (OAuth
+// 2.1 requirement for public clients) — old row is deleted, not reused.
+export const oauthTokens = pgTable("oauth_tokens", {
+  accessToken: text("access_token").primaryKey(),
+  refreshToken: text("refresh_token").notNull().unique(),
+  clientId: text("client_id").notNull(),
+  resource: text("resource"),
+  accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Renamed from physio_params in the 9 Sept 2026 pivot. Same "rules as data"
 // shape, but self-authored from standard sports-science defaults rather than
 // physio-supplied — see spec Section 4/5.
