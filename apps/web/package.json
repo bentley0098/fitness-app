@@ -11,7 +11,8 @@
     "db:generate": "drizzle-kit generate",
     "garmin:login": "node --env-file=.env --import tsx scripts/garmin-login.ts",
     "engine:seed": "node --env-file=.env --import tsx scripts/seed-engine-params.ts",
-    "engine:evaluate": "node --env-file=.env --import tsx scripts/evaluate-now.ts"
+    "engine:evaluate": "node --env-file=.env --import tsx scripts/evaluate-now.ts",
+    "plan:import": "node --env-file=.env --import tsx scripts/import-barcelona-plan.ts"
   },
   "dependencies": {
     "@fitness/engine": "*",
