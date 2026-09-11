@@ -1,0 +1,35 @@
+{
+  "name": "web",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "db:generate": "drizzle-kit generate",
+    "garmin:login": "node --env-file=.env --import tsx scripts/garmin-login.ts",
+    "engine:seed": "node --env-file=.env --import tsx scripts/seed-engine-params.ts",
+    "engine:evaluate": "node --env-file=.env --import tsx scripts/evaluate-now.ts"
+  },
+  "dependencies": {
+    "@fitness/engine": "*",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@pinia/nuxt": "^0.9.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "garmin-connect-sdk": "^1.1.0",
+    "nuxt": "^4.5.2",
+    "pinia": "^3.0.0",
+    "vue": "^3.5.42",
+    "vue-router": "^5.3.1",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@nuxtjs/tailwindcss": "^6.12.0",
+    "@vite-pwa/nuxt": "^0.10.0",
+    "drizzle-kit": "^0.28.0",
+    "drizzle-orm": "^0.36.0",
+    "tsx": "^4.19.0"
+  }
+}

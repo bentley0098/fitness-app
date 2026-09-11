@@ -1,0 +1,12 @@
+{
+  "name": "fitness-project",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/web",
+    "test:engine": "npm run test --workspace=packages/engine"
+  }
+}

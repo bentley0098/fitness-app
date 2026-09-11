@@ -1,0 +1,6 @@
+{
+  "crons": [
+    { "path": "/api/cron/sync-garmin", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/weekly-draft", "schedule": "0 20 * * 0" }
+  ]
+}
