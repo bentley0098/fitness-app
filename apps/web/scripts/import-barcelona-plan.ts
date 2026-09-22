@@ -23,33 +23,37 @@ interface Week {
   sat?: Session;
 }
 
+// NOTE: these `monday` values were originally off by one — every week 2-26
+// anchor was a Tuesday, which pushed the whole plan a day late (sessions
+// landed Tue/Thu/Sat/Sun rather than Mon/Wed/Fri/Sat). Corrected here, and
+// scripts/fix-plan-dates.ts shifts the already-imported rows to match.
 const weeks: Week[] = [
   // Week 1 is irregular — starts Thursday, not Monday. Handled separately below.
-  { week: 2, phase: "ramp", monday: "2026-09-15", mon: { kind: "walk_run", durationMin: 12, ratio: "2:2" }, sat: { kind: "walk_run", durationMin: 15, ratio: "3:2" } },
-  { week: 3, phase: "ramp", monday: "2026-09-22", mon: { kind: "continuous", durationMin: 15, approxKm: 2.5 }, sat: { kind: "continuous", durationMin: 18, approxKm: 3 } },
-  { week: 4, phase: "base", monday: "2026-09-29", mon: { kind: "distance", km: 3 }, wed: { kind: "distance", km: 2.5 }, sat: { kind: "distance", km: 4 } },
-  { week: 5, phase: "base", monday: "2026-10-06", mon: { kind: "distance", km: 4 }, wed: { kind: "distance", km: 3 }, sat: { kind: "distance", km: 5 } },
-  { week: 6, phase: "base", monday: "2026-10-13", mon: { kind: "distance", km: 4 }, wed: { kind: "distance", km: 3 }, fri: { kind: "distance", km: 3 }, sat: { kind: "distance", km: 6 } },
-  { week: 7, phase: "base", monday: "2026-10-20", mon: { kind: "distance", km: 5 }, wed: { kind: "distance", km: 4 }, fri: { kind: "distance", km: 4 }, sat: { kind: "distance", km: 7 } },
-  { week: 8, phase: "base", monday: "2026-10-27", mon: { kind: "distance", km: 6 }, wed: { kind: "distance", km: 5 }, fri: { kind: "distance", km: 6 }, sat: { kind: "distance", km: 9 } },
-  { week: 9, phase: "base", monday: "2026-11-03", mon: { kind: "distance", km: 6 }, wed: { kind: "distance", km: 5 }, fri: { kind: "distance", km: 6 }, sat: { kind: "distance", km: 10 } },
-  { week: 10, phase: "cutback", monday: "2026-11-10", mon: { kind: "distance", km: 5 }, wed: { kind: "distance", km: 5 }, fri: { kind: "distance", km: 5 }, sat: { kind: "distance", km: 8 } },
-  { week: 11, phase: "base", monday: "2026-11-17", mon: { kind: "distance", km: 6 }, wed: { kind: "distance", km: 6 }, fri: { kind: "distance", km: 6 }, sat: { kind: "distance", km: 11 } },
-  { week: 12, phase: "base", monday: "2026-11-24", mon: { kind: "distance", km: 6 }, wed: { kind: "distance", km: 6 }, fri: { kind: "distance", km: 7 }, sat: { kind: "distance", km: 13 } },
-  { week: 13, phase: "cutback", monday: "2026-12-01", mon: { kind: "distance", km: 6 }, wed: { kind: "distance", km: 5 }, fri: { kind: "distance", km: 6 }, sat: { kind: "distance", km: 11 } },
-  { week: 14, phase: "build", monday: "2026-12-08", mon: { kind: "distance", km: 7 }, wed: { kind: "distance", km: 6 }, fri: { kind: "distance", km: 7 }, sat: { kind: "distance", km: 15 } },
-  { week: 15, phase: "build", monday: "2026-12-15", mon: { kind: "distance", km: 7 }, wed: { kind: "distance", km: 7 }, fri: { kind: "distance", km: 7 }, sat: { kind: "distance", km: 17 } },
-  { week: 16, phase: "build", monday: "2026-12-22", mon: { kind: "distance", km: 7 }, wed: { kind: "distance", km: 7 }, fri: { kind: "distance", km: 8 }, sat: { kind: "distance", km: 19 } },
-  { week: 17, phase: "cutback", monday: "2026-12-29", mon: { kind: "distance", km: 6 }, wed: { kind: "distance", km: 6 }, fri: { kind: "distance", km: 7 }, sat: { kind: "distance", km: 15 } },
-  { week: 18, phase: "build", monday: "2027-01-05", mon: { kind: "distance", km: 8 }, wed: { kind: "distance", km: 7 }, fri: { kind: "distance", km: 8 }, sat: { kind: "distance", km: 21 } },
-  { week: 19, phase: "build", monday: "2027-01-12", mon: { kind: "distance", km: 8 }, wed: { kind: "distance", km: 7 }, fri: { kind: "distance", km: 8 }, sat: { kind: "distance", km: 23 } },
-  { week: 20, phase: "cutback", monday: "2027-01-19", mon: { kind: "distance", km: 7 }, wed: { kind: "distance", km: 6 }, fri: { kind: "distance", km: 7 }, sat: { kind: "distance", km: 18 } },
-  { week: 21, phase: "peak", monday: "2027-01-26", mon: { kind: "distance", km: 9 }, wed: { kind: "distance", km: 7 }, fri: { kind: "distance", km: 8 }, sat: { kind: "distance", km: 25 } },
-  { week: 22, phase: "peak", monday: "2027-02-02", mon: { kind: "distance", km: 9 }, wed: { kind: "distance", km: 8 }, fri: { kind: "distance", km: 9 }, sat: { kind: "distance", km: 28 } },
-  { week: 23, phase: "peak", monday: "2027-02-09", mon: { kind: "distance", km: 9 }, wed: { kind: "distance", km: 8 }, fri: { kind: "distance", km: 9 }, sat: { kind: "distance", km: 32 } },
-  { week: 24, phase: "cutback", monday: "2027-02-16", mon: { kind: "distance", km: 7 }, wed: { kind: "distance", km: 6 }, fri: { kind: "distance", km: 7 }, sat: { kind: "distance", km: 20 } },
-  { week: 25, phase: "taper", monday: "2027-02-23", mon: { kind: "distance", km: 8 }, wed: { kind: "distance", km: 7 }, fri: { kind: "distance", km: 7 }, sat: { kind: "distance", km: 18 } },
-  { week: 26, phase: "taper", monday: "2027-03-02", mon: { kind: "distance", km: 6 }, wed: { kind: "distance", km: 5 }, fri: { kind: "distance", km: 5 }, sat: { kind: "distance", km: 12 } },
+  { week: 2, phase: "ramp", monday: "2026-09-14", mon: { kind: "walk_run", durationMin: 12, ratio: "2:2" }, sat: { kind: "walk_run", durationMin: 15, ratio: "3:2" } },
+  { week: 3, phase: "ramp", monday: "2026-09-21", mon: { kind: "continuous", durationMin: 15, approxKm: 2.5 }, sat: { kind: "continuous", durationMin: 18, approxKm: 3 } },
+  { week: 4, phase: "base", monday: "2026-09-28", mon: { kind: "distance", km: 3 }, wed: { kind: "distance", km: 2.5 }, sat: { kind: "distance", km: 4 } },
+  { week: 5, phase: "base", monday: "2026-10-05", mon: { kind: "distance", km: 4 }, wed: { kind: "distance", km: 3 }, sat: { kind: "distance", km: 5 } },
+  { week: 6, phase: "base", monday: "2026-10-12", mon: { kind: "distance", km: 4 }, wed: { kind: "distance", km: 3 }, fri: { kind: "distance", km: 3 }, sat: { kind: "distance", km: 6 } },
+  { week: 7, phase: "base", monday: "2026-10-19", mon: { kind: "distance", km: 5 }, wed: { kind: "distance", km: 4 }, fri: { kind: "distance", km: 4 }, sat: { kind: "distance", km: 7 } },
+  { week: 8, phase: "base", monday: "2026-10-26", mon: { kind: "distance", km: 6 }, wed: { kind: "distance", km: 5 }, fri: { kind: "distance", km: 6 }, sat: { kind: "distance", km: 9 } },
+  { week: 9, phase: "base", monday: "2026-11-02", mon: { kind: "distance", km: 6 }, wed: { kind: "distance", km: 5 }, fri: { kind: "distance", km: 6 }, sat: { kind: "distance", km: 10 } },
+  { week: 10, phase: "cutback", monday: "2026-11-09", mon: { kind: "distance", km: 5 }, wed: { kind: "distance", km: 5 }, fri: { kind: "distance", km: 5 }, sat: { kind: "distance", km: 8 } },
+  { week: 11, phase: "base", monday: "2026-11-16", mon: { kind: "distance", km: 6 }, wed: { kind: "distance", km: 6 }, fri: { kind: "distance", km: 6 }, sat: { kind: "distance", km: 11 } },
+  { week: 12, phase: "base", monday: "2026-11-23", mon: { kind: "distance", km: 6 }, wed: { kind: "distance", km: 6 }, fri: { kind: "distance", km: 7 }, sat: { kind: "distance", km: 13 } },
+  { week: 13, phase: "cutback", monday: "2026-11-30", mon: { kind: "distance", km: 6 }, wed: { kind: "distance", km: 5 }, fri: { kind: "distance", km: 6 }, sat: { kind: "distance", km: 11 } },
+  { week: 14, phase: "build", monday: "2026-12-07", mon: { kind: "distance", km: 7 }, wed: { kind: "distance", km: 6 }, fri: { kind: "distance", km: 7 }, sat: { kind: "distance", km: 15 } },
+  { week: 15, phase: "build", monday: "2026-12-14", mon: { kind: "distance", km: 7 }, wed: { kind: "distance", km: 7 }, fri: { kind: "distance", km: 7 }, sat: { kind: "distance", km: 17 } },
+  { week: 16, phase: "build", monday: "2026-12-21", mon: { kind: "distance", km: 7 }, wed: { kind: "distance", km: 7 }, fri: { kind: "distance", km: 8 }, sat: { kind: "distance", km: 19 } },
+  { week: 17, phase: "cutback", monday: "2026-12-28", mon: { kind: "distance", km: 6 }, wed: { kind: "distance", km: 6 }, fri: { kind: "distance", km: 7 }, sat: { kind: "distance", km: 15 } },
+  { week: 18, phase: "build", monday: "2027-01-04", mon: { kind: "distance", km: 8 }, wed: { kind: "distance", km: 7 }, fri: { kind: "distance", km: 8 }, sat: { kind: "distance", km: 21 } },
+  { week: 19, phase: "build", monday: "2027-01-11", mon: { kind: "distance", km: 8 }, wed: { kind: "distance", km: 7 }, fri: { kind: "distance", km: 8 }, sat: { kind: "distance", km: 23 } },
+  { week: 20, phase: "cutback", monday: "2027-01-18", mon: { kind: "distance", km: 7 }, wed: { kind: "distance", km: 6 }, fri: { kind: "distance", km: 7 }, sat: { kind: "distance", km: 18 } },
+  { week: 21, phase: "peak", monday: "2027-01-25", mon: { kind: "distance", km: 9 }, wed: { kind: "distance", km: 7 }, fri: { kind: "distance", km: 8 }, sat: { kind: "distance", km: 25 } },
+  { week: 22, phase: "peak", monday: "2027-02-01", mon: { kind: "distance", km: 9 }, wed: { kind: "distance", km: 8 }, fri: { kind: "distance", km: 9 }, sat: { kind: "distance", km: 28 } },
+  { week: 23, phase: "peak", monday: "2027-02-08", mon: { kind: "distance", km: 9 }, wed: { kind: "distance", km: 8 }, fri: { kind: "distance", km: 9 }, sat: { kind: "distance", km: 32 } },
+  { week: 24, phase: "cutback", monday: "2027-02-15", mon: { kind: "distance", km: 7 }, wed: { kind: "distance", km: 6 }, fri: { kind: "distance", km: 7 }, sat: { kind: "distance", km: 20 } },
+  { week: 25, phase: "taper", monday: "2027-02-22", mon: { kind: "distance", km: 8 }, wed: { kind: "distance", km: 7 }, fri: { kind: "distance", km: 7 }, sat: { kind: "distance", km: 18 } },
+  { week: 26, phase: "taper", monday: "2027-03-01", mon: { kind: "distance", km: 6 }, wed: { kind: "distance", km: 5 }, fri: { kind: "distance", km: 5 }, sat: { kind: "distance", km: 12 } },
   // Week 27: corrected anchor. The source file's own headline stat ("Sun Mar
   // 14" race day) is the one fact confirmed against the real calendar — Mar
   // 14, 2027 genuinely is a Sunday. Its "Mar 9–15" week label doesn't match

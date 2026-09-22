@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Slate / grey / green, light theme.
+ *
+ * Values are space-separated `R G B` triplets rather than hex so Tailwind's
+ * `rgb(var(--x) / <alpha-value>)` in tailwind.config.ts can compose opacity
+ * variants against them.
+ *
+ * CONTRAST RULE — accent-500 is a FILL colour only. Accent *text* on a light
+ * surface must use accent-700; accent-500 and lighter fail WCAG AA on white.
+ * Same split for verdicts: `verdict-*` for solid fills, borders and text,
+ * `verdict-*-soft` for background tints only.
+ */
+:root {
+  color-scheme: light;
+
+  --c-canvas: 248 250 252; /* slate-50  — page background */
+  --c-surface: 255 255 255; /* white     — cards */
+  --c-raised: 241 245 249; /* slate-100 — inset chips, wells, skeletons */
+
+  --c-line: 226 232 240; /* slate-200 — hairlines */
+  --c-line-strong: 203 213 225; /* slate-300 — dividers, input borders */
+
+  --c-ink: 15 23 42; /* slate-900 — primary text */
+  --c-ink-muted: 71 85 105; /* slate-600 — secondary text */
+  --c-ink-subtle: 148 163 184; /* slate-400 — labels, captions */
+
+  --c-accent-50: 236 253 245;
+  --c-accent-100: 209 250 229;
+  --c-accent-300: 110 231 183;
+  --c-accent-500: 16 185 129; /* fills only */
+  --c-accent-600: 5 150 105; /* primary buttons, active nav */
+  --c-accent-700: 4 120 87; /* accent TEXT on light surfaces */
+
+  --c-progress: 5 150 105;
+  --c-progress-soft: 209 250 229;
+  --c-hold: 180 83 9;
+  --c-hold-soft: 254 243 199;
+  --c-regress: 194 65 12;
+  --c-regress-soft: 255 237 213;
+  --c-stop: 185 28 28;
+  --c-stop-soft: 254 226 226;
+}
+
+html {
+  background-color: rgb(var(--c-canvas));
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  @apply bg-canvas text-ink antialiased;
+}
+
+/* Tabular figures everywhere a metric is rendered — stops stat values from
+   jittering as digits change width. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}

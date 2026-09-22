@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { garmin } from "./garmin";
+import { extractActivityMetrics } from "./garminActivityMetrics";
 
 export interface GarminSyncResult {
   fetched: number;
@@ -62,6 +63,11 @@ export async function syncGarminActivities(limit = 20): Promise<GarminSyncResult
         max_hr: summaryDTO.maxHR ?? null,
         cadence: summaryDTO.averageRunningCadenceInStepsPerMinute ?? null,
         elevation_m: summaryDTO.elevationGain ?? null,
+        // VO2 max and training load have no dedicated SDK endpoint — Garmin
+        // only surfaces them inside the activity detail. Same extraction is
+        // reused by scripts/backfill-activity-metrics.ts against stored
+        // raw_payload, so it lives in one place.
+        ...extractActivityMetrics(detail),
         raw_payload: detail,
       });
 

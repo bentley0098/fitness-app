@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { garmin } from "./garmin";
+import { extractSleep } from "./garminSleep";
 
 export interface HealthMetricsSyncResult {
   daysProcessed: number;
@@ -49,11 +50,14 @@ export async function syncHealthMetrics(days = 7): Promise<HealthMetricsSyncResu
     result.daysProcessed++;
 
     try {
-      const [hrv, bodyBattery, heartRate, stress] = await Promise.all([
+      const [hrv, bodyBattery, heartRate, stress, sleep] = await Promise.all([
         garmin.health.getHrvStatus(date).catch(() => null),
         garmin.health.getBodyBattery(date).catch(() => null),
         garmin.health.getHeartRate(date).catch(() => null),
         garmin.health.getStress(date).catch(() => null),
+        // Sleep lives on its own endpoint namespace, not health.*. Display
+        // only — the engine never reads it.
+        garmin.sleep.getDailySleep(date).catch(() => null),
       ]);
 
       const hrvRaw = hrv as Raw | null;
@@ -82,7 +86,8 @@ export async function syncHealthMetrics(days = 7): Promise<HealthMetricsSyncResu
           body_battery_min: bbMin,
           body_battery_max: bbMax,
           stress_avg: stressAvg,
-          raw_payload: { hrv, bodyBattery, heartRate, stress },
+          ...extractSleep(sleep, day),
+          raw_payload: { hrv, bodyBattery, heartRate, stress, sleep },
         },
         { onConflict: "date" },
       );

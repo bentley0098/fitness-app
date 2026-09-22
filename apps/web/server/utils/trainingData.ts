@@ -1,6 +1,10 @@
 import { evaluate } from "@fitness/engine";
 import type { Activity, DailyHealthMetrics, EngineParams, EvaluationResult, TrainingWindow } from "@fitness/engine";
+// isoDate/addDaysIso live in ./dates — pure, so callers that only need date
+// arithmetic (planMeta and its tests) don't construct a Supabase client.
+import { isoDate } from "./dates";
 import { db } from "./db";
+import { ACTIVITY_COLUMNS, HEALTH_METRIC_COLUMNS } from "./serialize";
 
 // Single source of truth for turning Supabase rows into the engine's types.
 // Used by API routes (server/api/**) and the standalone scripts alike —
@@ -11,8 +15,11 @@ export async function loadTrainingWindow(): Promise<TrainingWindow> {
     { data: metricRows, error: metricErr },
     { data: paramRows, error: paramErr },
   ] = await Promise.all([
-    db.from("activities").select("*").order("date", { ascending: true }),
-    db.from("daily_health_metrics").select("*").order("date", { ascending: true }),
+    // Explicit columns, not select("*") — that pulled raw_payload, the full
+    // Garmin blob for every row, on every request that touches the window.
+    // Nothing downstream of here reads it.
+    db.from("activities").select(ACTIVITY_COLUMNS).order("date", { ascending: true }),
+    db.from("daily_health_metrics").select(HEALTH_METRIC_COLUMNS).order("date", { ascending: true }),
     db.from("engine_params").select("*").order("version", { ascending: false }).limit(1),
   ]);
 
@@ -60,16 +67,6 @@ export async function loadTrainingWindow(): Promise<TrainingWindow> {
   };
 
   return { activities, healthMetrics, engineParams };
-}
-
-export function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-export function addDaysIso(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return isoDate(d);
 }
 
 export async function evaluateToday(): Promise<EvaluationResult & { asOfDate: string }> {

@@ -1,5 +1,6 @@
 import { evaluate } from "@fitness/engine";
-import { addDaysIso, isoDate, loadTrainingWindow } from "../utils/trainingData";
+import { addDaysIso, isoDate } from "../utils/dates";
+import { loadTrainingWindow } from "../utils/trainingData";
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);

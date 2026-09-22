@@ -1,6 +1,7 @@
 import { clampWeeklyIncrease, evaluate } from "@fitness/engine";
 import { db } from "./db";
-import { addDaysIso, isoDate, loadTrainingWindow } from "./trainingData";
+import { addDaysIso, isoDate } from "./dates";
+import { loadTrainingWindow } from "./trainingData";
 
 export interface ProposeRevisionInput {
   date: string; // ISO date this session/week targets
