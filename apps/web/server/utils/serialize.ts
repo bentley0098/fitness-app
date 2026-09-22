@@ -143,8 +143,16 @@ export function toHealthMetricsDto(r: Row): HealthMetricsDto {
  * raw_payload — the full Garmin blob, hundreds of KB per row — on every
  * request that touches the training window. Nothing downstream reads it.
  */
-export const ACTIVITY_COLUMNS =
-  "id, external_id, date, activity_type, distance_m, moving_time_s, elapsed_time_s, avg_hr, max_hr, cadence, elevation_m, vo2_max, training_load, aerobic_te, anaerobic_te";
+//
+// Split into BASE (pre-0006, always present) and the full list. selectTolerant
+// in ./optionalColumns falls back to BASE when the migration hasn't run yet,
+// so a schema/code skew blanks a tile instead of 500-ing the app.
+export const ACTIVITY_BASE_COLUMNS =
+  "id, external_id, date, activity_type, distance_m, moving_time_s, elapsed_time_s, avg_hr, max_hr, cadence, elevation_m";
 
-export const HEALTH_METRIC_COLUMNS =
-  "id, date, hrv_status, hrv_last_night_avg, hrv_weekly_avg, resting_hr, body_battery_min, body_battery_max, stress_avg, sleep_time_s, deep_sleep_s, light_sleep_s, rem_sleep_s, awake_sleep_s, sleep_score, sleep_start_local, sleep_end_local";
+export const ACTIVITY_COLUMNS = `${ACTIVITY_BASE_COLUMNS}, vo2_max, training_load, aerobic_te, anaerobic_te`;
+
+export const HEALTH_METRIC_BASE_COLUMNS =
+  "id, date, hrv_status, hrv_last_night_avg, hrv_weekly_avg, resting_hr, body_battery_min, body_battery_max, stress_avg";
+
+export const HEALTH_METRIC_COLUMNS = `${HEALTH_METRIC_BASE_COLUMNS}, sleep_time_s, deep_sleep_s, light_sleep_s, rem_sleep_s, awake_sleep_s, sleep_score, sleep_start_local, sleep_end_local`;

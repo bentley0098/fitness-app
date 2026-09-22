@@ -5,7 +5,15 @@ import { loadTrainingWindow } from "./trainingData";
 import { buildDay } from "./planCompletion";
 import { mondayOf, weekDates, weekEndForStart, weekNumberFor } from "./planMeta";
 import { raceInfo } from "./planView";
-import { ACTIVITY_COLUMNS, HEALTH_METRIC_COLUMNS, toActivityDto, toHealthMetricsDto } from "./serialize";
+import { selectTolerant } from "./optionalColumns";
+import {
+  ACTIVITY_BASE_COLUMNS,
+  ACTIVITY_COLUMNS,
+  HEALTH_METRIC_BASE_COLUMNS,
+  HEALTH_METRIC_COLUMNS,
+  toActivityDto,
+  toHealthMetricsDto,
+} from "./serialize";
 
 // Everything the Home screen needs, in one request.
 //
@@ -30,6 +38,23 @@ function mean(values: (number | null | undefined)[]): number | null {
   return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
 }
 
+/**
+ * VO2 max history. Unlike the other reads this both selects and filters on a
+ * post-0006 column, so there is no reduced column set to fall back to — if the
+ * migration hasn't run, the honest answer is "no data", not an error.
+ */
+async function loadVo2Series(): Promise<{ date: string; vo2_max: number }[]> {
+  const { data, error } = await db
+    .from("activities")
+    .select("date, vo2_max")
+    .not("vo2_max", "is", null)
+    .order("date", { ascending: false })
+    .limit(40);
+
+  if (error) return [];
+  return (data ?? []) as { date: string; vo2_max: number }[];
+}
+
 export async function buildDashboard() {
   const today = isoDate(new Date());
   const window = await loadTrainingWindow();
@@ -42,21 +67,20 @@ export async function buildDashboard() {
   // Three narrow queries alongside the window. The window's health metrics are
   // mapped to the ENGINE's type, which deliberately has no sleep fields — so
   // the raw rows are fetched separately for display.
-  const [{ data: metricRows }, { data: planRows }, { data: recentRows }, { data: vo2Rows }] = await Promise.all([
-    db
-      .from("daily_health_metrics")
-      .select(HEALTH_METRIC_COLUMNS)
-      .gte("date", addDaysIso(today, -29))
-      .lte("date", today)
-      .order("date", { ascending: true }),
+  const [{ data: metricRows }, { data: planRows }, { data: recentRows }, vo2Rows] = await Promise.all([
+    selectTolerant("daily_health_metrics", HEALTH_METRIC_COLUMNS, HEALTH_METRIC_BASE_COLUMNS, (cols) =>
+      db
+        .from("daily_health_metrics")
+        .select(cols)
+        .gte("date", addDaysIso(today, -29))
+        .lte("date", today)
+        .order("date", { ascending: true }),
+    ),
     db.from("plan_sessions").select("*").gte("date", weekStart).lte("date", addDaysIso(weekStart, 20)),
-    db.from("activities").select(ACTIVITY_COLUMNS).order("date", { ascending: false }).limit(RECENT_ACTIVITY_LIMIT),
-    db
-      .from("activities")
-      .select("date, vo2_max")
-      .not("vo2_max", "is", null)
-      .order("date", { ascending: false })
-      .limit(40),
+    selectTolerant("activities", ACTIVITY_COLUMNS, ACTIVITY_BASE_COLUMNS, (cols) =>
+      db.from("activities").select(cols).order("date", { ascending: false }).limit(RECENT_ACTIVITY_LIMIT),
+    ),
+    loadVo2Series(),
   ]);
 
   const metrics = (metricRows ?? []).map(toHealthMetricsDto);
@@ -99,7 +123,7 @@ export async function buildDashboard() {
     todayMetrics?.restingHr != null && rhr28 != null ? todayMetrics.restingHr - rhr28 : null;
 
   // ---- Fitness ---------------------------------------------------------
-  const vo2Series = (vo2Rows ?? []).filter((r) => r.vo2_max != null);
+  const vo2Series = vo2Rows.filter((r) => r.vo2_max != null);
   const currentVo2 = vo2Series[0] ?? null;
   const priorVo2 = currentVo2
     ? vo2Series.find((r) => r.date <= addDaysIso(currentVo2.date, -30)) ?? null

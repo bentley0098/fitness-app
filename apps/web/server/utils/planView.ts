@@ -14,7 +14,8 @@ import {
   weekStartForNumber,
 } from "./planMeta";
 import { buildDay, totalsFor, type ActivityLike, type SessionLike } from "./planCompletion";
-import { ACTIVITY_COLUMNS, toActivityDto } from "./serialize";
+import { selectTolerant } from "./optionalColumns";
+import { ACTIVITY_BASE_COLUMNS, ACTIVITY_COLUMNS, toActivityDto } from "./serialize";
 
 // Shared loading + shaping for the Plan screen. Both the week view and the
 // 27-week overview read from the same in-memory snapshot: 99 plan rows and
@@ -30,7 +31,9 @@ export interface PlanSnapshot {
 export async function loadPlanSnapshot(): Promise<PlanSnapshot> {
   const [{ data: sessionRows, error: sessionErr }, { data: activityRows, error: activityErr }] = await Promise.all([
     db.from("plan_sessions").select("*").order("date", { ascending: true }),
-    db.from("activities").select(ACTIVITY_COLUMNS).order("date", { ascending: true }),
+    selectTolerant("activities", ACTIVITY_COLUMNS, ACTIVITY_BASE_COLUMNS, (cols) =>
+      db.from("activities").select(cols).order("date", { ascending: true }),
+    ),
   ]);
 
   if (sessionErr) throw createError({ statusCode: 500, statusMessage: `Load plan failed: ${sessionErr.message}` });

@@ -4,7 +4,16 @@ import type { Activity, DailyHealthMetrics, EngineParams, EvaluationResult, Trai
 // arithmetic (planMeta and its tests) don't construct a Supabase client.
 import { isoDate } from "./dates";
 import { db } from "./db";
-import { ACTIVITY_COLUMNS, HEALTH_METRIC_COLUMNS } from "./serialize";
+import { selectTolerant } from "./optionalColumns";
+import {
+  ACTIVITY_BASE_COLUMNS,
+  ACTIVITY_COLUMNS,
+  HEALTH_METRIC_BASE_COLUMNS,
+  HEALTH_METRIC_COLUMNS,
+} from "./serialize";
+
+const ACTIVITY_TABLE = "activities";
+const METRIC_TABLE = "daily_health_metrics";
 
 // Single source of truth for turning Supabase rows into the engine's types.
 // Used by API routes (server/api/**) and the standalone scripts alike —
@@ -17,9 +26,14 @@ export async function loadTrainingWindow(): Promise<TrainingWindow> {
   ] = await Promise.all([
     // Explicit columns, not select("*") — that pulled raw_payload, the full
     // Garmin blob for every row, on every request that touches the window.
-    // Nothing downstream of here reads it.
-    db.from("activities").select(ACTIVITY_COLUMNS).order("date", { ascending: true }),
-    db.from("daily_health_metrics").select(HEALTH_METRIC_COLUMNS).order("date", { ascending: true }),
+    // Nothing downstream of here reads it. Wrapped so a database still on the
+    // pre-0006 schema degrades instead of failing the request.
+    selectTolerant(ACTIVITY_TABLE, ACTIVITY_COLUMNS, ACTIVITY_BASE_COLUMNS, (cols) =>
+      db.from(ACTIVITY_TABLE).select(cols).order("date", { ascending: true }),
+    ),
+    selectTolerant(METRIC_TABLE, HEALTH_METRIC_COLUMNS, HEALTH_METRIC_BASE_COLUMNS, (cols) =>
+      db.from(METRIC_TABLE).select(cols).order("date", { ascending: true }),
+    ),
     db.from("engine_params").select("*").order("version", { ascending: false }).limit(1),
   ]);
 
