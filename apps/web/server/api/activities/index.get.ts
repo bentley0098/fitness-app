@@ -1,5 +1,6 @@
 import { db } from "../../utils/db";
-import { ACTIVITY_COLUMNS, toActivityDto } from "../../utils/serialize";
+import { selectTolerant } from "../../utils/optionalColumns";
+import { ACTIVITY_BASE_COLUMNS, ACTIVITY_COLUMNS, toActivityDto } from "../../utils/serialize";
 import { sessionLabel } from "../../utils/planLabels";
 import { countsToward } from "../../utils/planCompletion";
 
@@ -12,17 +13,25 @@ export default defineEventHandler(async (event) => {
   const limit = Math.min(Math.max(Number(query.limit ?? DEFAULT_LIMIT) || DEFAULT_LIMIT, 1), MAX_LIMIT);
   const offset = Math.max(Number(query.offset ?? 0) || 0, 0);
 
-  let request = db
-    .from("activities")
-    .select(ACTIVITY_COLUMNS, { count: "exact" })
-    .order("date", { ascending: false })
-    .range(offset, offset + limit - 1);
+  const build = (cols: string) => {
+    let request = db
+      .from("activities")
+      .select(cols, { count: "exact" })
+      .order("date", { ascending: false })
+      .range(offset, offset + limit - 1);
 
-  if (typeof query.type === "string" && query.type) request = request.eq("activity_type", query.type);
-  if (typeof query.from === "string" && query.from) request = request.gte("date", query.from);
-  if (typeof query.to === "string" && query.to) request = request.lte("date", query.to);
+    if (typeof query.type === "string" && query.type) request = request.eq("activity_type", query.type);
+    if (typeof query.from === "string" && query.from) request = request.gte("date", query.from);
+    if (typeof query.to === "string" && query.to) request = request.lte("date", query.to);
+    return request;
+  };
 
-  const { data, error, count } = await request;
+  const { data, error, count } = (await selectTolerant(
+    "activities",
+    ACTIVITY_COLUMNS,
+    ACTIVITY_BASE_COLUMNS,
+    build,
+  )) as { data: any[] | null; error: any; count?: number | null };
   if (error) throw createError({ statusCode: 500, statusMessage: error.message });
 
   const rows = data ?? [];

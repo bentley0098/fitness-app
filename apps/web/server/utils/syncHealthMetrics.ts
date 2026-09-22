@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { garmin } from "./garmin";
 import { extractSleep } from "./garminSleep";
+import { SLEEP_OPTIONAL_KEYS, writeTolerant } from "./optionalColumns";
 
 export interface HealthMetricsSyncResult {
   daysProcessed: number;
@@ -76,7 +77,8 @@ export async function syncHealthMetrics(days = 7): Promise<HealthMetricsSyncResu
           : null;
       const restingHr: number | null = hrRaw?.restingHeartRate ?? avgValidValues(hrRaw?.heartRateValues);
 
-      const { error } = await db.from("daily_health_metrics").upsert(
+      const { error } = await writeTolerant(
+        "daily_health_metrics",
         {
           date: day,
           hrv_status: (hrvSummary.status ?? "unknown").toString().toLowerCase(),
@@ -89,7 +91,8 @@ export async function syncHealthMetrics(days = 7): Promise<HealthMetricsSyncResu
           ...extractSleep(sleep, day),
           raw_payload: { hrv, bodyBattery, heartRate, stress, sleep },
         },
-        { onConflict: "date" },
+        SLEEP_OPTIONAL_KEYS,
+        (row) => db.from("daily_health_metrics").upsert(row, { onConflict: "date" }),
       );
 
       if (error) {

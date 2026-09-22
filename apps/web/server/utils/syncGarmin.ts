@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { garmin } from "./garmin";
 import { extractActivityMetrics } from "./garminActivityMetrics";
+import { ACTIVITY_OPTIONAL_KEYS, writeTolerant } from "./optionalColumns";
 
 export interface GarminSyncResult {
   fetched: number;
@@ -52,7 +53,7 @@ export async function syncGarminActivities(limit = 20): Promise<GarminSyncResult
         continue;
       }
 
-      const { error: insertError } = await db.from("activities").insert({
+      const { error: insertError } = await writeTolerant("activities", {
         external_id: externalId,
         date: startTimeLocal.slice(0, 10),
         activity_type: detail.activityType?.typeKey ?? summary.activityType?.typeKey ?? "unknown",
@@ -69,7 +70,7 @@ export async function syncGarminActivities(limit = 20): Promise<GarminSyncResult
         // raw_payload, so it lives in one place.
         ...extractActivityMetrics(detail),
         raw_payload: detail,
-      });
+      }, ACTIVITY_OPTIONAL_KEYS, (row) => db.from("activities").insert(row));
 
       if (insertError) {
         result.errors.push(`${externalId}: insert failed — ${insertError.message}`);

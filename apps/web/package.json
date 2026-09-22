@@ -15,7 +15,6 @@
     "plan:import": "node --env-file=.env --import tsx scripts/import-barcelona-plan.ts",
     "activities:backfill": "node --env-file=.env --import tsx scripts/backfill-activity-metrics.ts",
     "health:backfill": "node --env-file=.env --import tsx scripts/backfill-sleep.ts",
-    "plan:fix-dates": "node --env-file=.env --import tsx scripts/fix-plan-dates.ts",
     "test": "vitest run"
   },
   "dependencies": {
