@@ -1,7 +1,18 @@
 <template>
   <div
-    class="rounded-card border bg-surface p-3.5 shadow-card transition-colors"
-    :class="[isToday ? 'border-accent-500 ring-1 ring-accent-500/20' : 'border-line']"
+    class="rounded-card border bg-surface p-3.5 shadow-card transition-all"
+    :class="[
+      isToday ? 'border-accent-500 ring-1 ring-accent-500/20' : 'border-line',
+      draggable ? 'cursor-grab select-none' : '',
+      // Held cards shrink a little rather than growing: at phone width the
+      // ghost sits exactly over the row it's aiming at, so it has to leave a
+      // margin for that row's highlight to show around it.
+      dragging ? 'scale-[0.96] shadow-lifted' : '',
+      // A filled accent panel, not another ring — today's card already wears
+      // an accent ring and the two must not read the same mid-drag.
+      isDropTarget ? 'border-accent-500 bg-accent-100 ring-2 ring-accent-500' : '',
+      isSourceGap ? 'opacity-30' : '',
+    ]"
   >
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
@@ -68,21 +79,32 @@ interface Completion {
   pct: number | null;
 }
 
-const props = defineProps<{
-  date: string;
-  isToday: boolean;
-  session: {
-    id: string;
-    phase: string;
-    type: string;
-    label: string;
-    status: string;
-    changedBecause: string | null;
-    targetDistanceM: number | null;
-    targetDurationS: number | null;
-  } | null;
-  completion: Completion;
-}>();
+const props = withDefaults(
+  defineProps<{
+    date: string;
+    isToday: boolean;
+    session: {
+      id: string;
+      // Sent by buildWeek() all along; only the type left it out.
+      date?: string;
+      phase: string;
+      type: string;
+      label: string;
+      status: string;
+      changedBecause: string | null;
+      targetDistanceM: number | null;
+      targetDurationS: number | null;
+    } | null;
+    completion: Completion;
+    /** Long-press drag affordances — the gesture itself lives in the parent. */
+    draggable?: boolean;
+    dragging?: boolean;
+    isDropTarget?: boolean;
+    /** This card's session is currently in hand, so show the hole it left. */
+    isSourceGap?: boolean;
+  }>(),
+  { draggable: false, dragging: false, isDropTarget: false, isSourceGap: false },
+);
 
 const STATE_BADGES: Record<string, { icon: string; class: string; title: string }> = {
   completed: { icon: "check", class: "bg-verdict-progress text-white", title: "Completed" },
