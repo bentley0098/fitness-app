@@ -17,6 +17,15 @@ export const activities = pgTable("activities", {
   maxHr: doublePrecision("max_hr"),
   cadence: doublePrecision("cadence"),
   elevationM: doublePrecision("elevation_m"),
+  // Garmin exposes no VO2-max or training-load endpoint through the Node SDK
+  // (its HttpClient is private), but it does return these inside each
+  // activity's detail payload — which we already store in raw_payload. So
+  // they're extracted on sync and backfilled from stored JSON, no extra API
+  // calls. Nullable because Garmin only computes them for qualifying runs.
+  vo2Max: doublePrecision("vo2_max"),
+  trainingLoad: doublePrecision("training_load"),
+  aerobicTe: doublePrecision("aerobic_te"),
+  anaerobicTe: doublePrecision("anaerobic_te"),
   rawPayload: jsonb("raw_payload"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -33,6 +42,20 @@ export const dailyHealthMetrics = pgTable("daily_health_metrics", {
   bodyBatteryMin: doublePrecision("body_battery_min"),
   bodyBatteryMax: doublePrecision("body_battery_max"),
   stressAvg: doublePrecision("stress_avg"),
+  // Sleep, from garmin.sleep.getDailySleep(). Display-only — the engine never
+  // reads these (see packages/engine/src/types.ts, which deliberately does not
+  // carry them). Attributed to the day the night ENDS on, matching Garmin's
+  // own dailySleepDTO.calendarDate.
+  sleepTimeS: doublePrecision("sleep_time_s"),
+  deepSleepS: doublePrecision("deep_sleep_s"),
+  lightSleepS: doublePrecision("light_sleep_s"),
+  remSleepS: doublePrecision("rem_sleep_s"),
+  awakeSleepS: doublePrecision("awake_sleep_s"),
+  sleepScore: doublePrecision("sleep_score"),
+  // Wall-clock local, NOT UTC — Garmin already applies the device's offset.
+  // Stored tz-naive so the value reads back exactly as the watch recorded it.
+  sleepStartLocal: timestamp("sleep_start_local"),
+  sleepEndLocal: timestamp("sleep_end_local"),
   rawPayload: jsonb("raw_payload"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

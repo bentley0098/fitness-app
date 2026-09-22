@@ -1,6 +1,7 @@
 import { evaluate } from "@fitness/engine";
 import { proposeRevision } from "./planRevisions";
-import { addDaysIso, isoDate, loadTrainingWindow } from "./trainingData";
+import { addDaysIso, isoDate } from "./dates";
+import { loadTrainingWindow } from "./trainingData";
 
 export interface WeeklyDraftResult {
   skipped: boolean;

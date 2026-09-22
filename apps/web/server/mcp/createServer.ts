@@ -3,7 +3,8 @@ import { evaluate } from "@fitness/engine";
 import { z } from "zod";
 import { db } from "../utils/db";
 import { applyRevision, proposeRevision } from "../utils/planRevisions";
-import { addDaysIso, isoDate, loadTrainingWindow } from "../utils/trainingData";
+import { addDaysIso, isoDate } from "../utils/dates";
+import { loadTrainingWindow } from "../utils/trainingData";
 
 function textResult(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };

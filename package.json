@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "dev": "npm run dev --workspace=apps/web",
-    "test:engine": "npm run test --workspace=packages/engine"
+    "test:engine": "npm run test --workspace=packages/engine",
+    "test": "npm run test --workspaces --if-present"
   }
 }

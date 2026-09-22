@@ -1,29 +1,17 @@
 <template>
-  <div class="flex gap-0.5 h-8">
+  <div class="flex h-8 gap-0.5">
     <div
       v-for="(v, i) in verdicts"
       :key="i"
-      :class="['flex-1 rounded-sm', colorFor(v)]"
+      class="flex-1 rounded-sm"
+      :class="verdictStyle(v).solid"
       :title="v ?? 'no data'"
     />
   </div>
 </template>
 
 <script setup lang="ts">
+// Colours come from verdictStyle() — the local colorFor() map this used to
+// carry has been folded into the shared composable.
 defineProps<{ verdicts: (string | null)[] }>();
-
-function colorFor(v: string | null): string {
-  switch (v) {
-    case "progress":
-      return "bg-emerald-500";
-    case "hold":
-      return "bg-amber-600";
-    case "regress":
-      return "bg-orange-600";
-    case "stop":
-      return "bg-red-500";
-    default:
-      return "bg-gray-800";
-  }
-}
 </script>

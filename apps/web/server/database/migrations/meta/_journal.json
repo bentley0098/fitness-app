@@ -43,6 +43,13 @@
       "when": 1789134189655,
       "tag": "0005_whole_iron_fist",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790089448277,
+      "tag": "0006_nice_captain_cross",
+      "breakpoints": true
     }
   ]
 }

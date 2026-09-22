@@ -12,7 +12,11 @@
     "garmin:login": "node --env-file=.env --import tsx scripts/garmin-login.ts",
     "engine:seed": "node --env-file=.env --import tsx scripts/seed-engine-params.ts",
     "engine:evaluate": "node --env-file=.env --import tsx scripts/evaluate-now.ts",
-    "plan:import": "node --env-file=.env --import tsx scripts/import-barcelona-plan.ts"
+    "plan:import": "node --env-file=.env --import tsx scripts/import-barcelona-plan.ts",
+    "activities:backfill": "node --env-file=.env --import tsx scripts/backfill-activity-metrics.ts",
+    "health:backfill": "node --env-file=.env --import tsx scripts/backfill-sleep.ts",
+    "plan:fix-dates": "node --env-file=.env --import tsx scripts/fix-plan-dates.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@fitness/engine": "*",
@@ -31,6 +35,7 @@
     "@vite-pwa/nuxt": "^0.10.0",
     "drizzle-kit": "^0.28.0",
     "drizzle-orm": "^0.36.0",
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.0",
+    "vitest": "^2.1.9"
   }
 }
