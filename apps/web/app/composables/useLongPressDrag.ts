@@ -58,6 +58,28 @@ export function useLongPressDrag({ container, onDrop }: LongPressDragOptions) {
     return atBottom || atTop ? Number.POSITIVE_INFINITY : TARGET_SLACK_PX;
   }
 
+  /**
+   * Stop the browser scrolling the page while a card is in hand.
+   *
+   * This is the whole reason touch drag works at all, and none of the obvious
+   * alternatives do the job:
+   *
+   *   - `touch-action: none` is read when the touch STARTS. Setting it once
+   *     the card lifts, 400ms in, is too late for the touch already in
+   *     flight, and the browser will take that touch for a scroll and fire
+   *     pointercancel at us instead.
+   *   - `preventDefault()` on a pointermove does not stop touch scrolling.
+   *
+   * A non-passive touchmove listener does, but only if it is attached before
+   * the finger moves — Chrome treats document-level touchmove as passive by
+   * default, and passive preventDefault() is silently ignored. So it goes on
+   * at pointerdown and only starts refusing once the card is actually lifted,
+   * which leaves a pre-lift drag free to scroll the page as it should.
+   */
+  function blockTouchScroll(event: TouchEvent) {
+    if (isDragging.value && event.cancelable) event.preventDefault();
+  }
+
   function snapshotTargets(): DropTarget[] {
     const root = container.value;
     if (!root) return [];
@@ -130,6 +152,7 @@ export function useLongPressDrag({ container, onDrop }: LongPressDragOptions) {
     capturedEl = el;
     capturedPointerId = event.pointerId;
     el.setPointerCapture(event.pointerId);
+    document.addEventListener("touchmove", blockTouchScroll, { passive: false });
 
     timer = setTimeout(() => {
       timer = null;
@@ -171,6 +194,7 @@ export function useLongPressDrag({ container, onDrop }: LongPressDragOptions) {
   }
 
   function reset() {
+    document.removeEventListener("touchmove", blockTouchScroll);
     if (timer) clearTimeout(timer);
     timer = null;
     if (scrollFrame !== null) cancelAnimationFrame(scrollFrame);

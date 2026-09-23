@@ -3,7 +3,9 @@
     class="rounded-card border bg-surface p-3.5 shadow-card transition-all"
     :class="[
       isToday ? 'border-accent-500 ring-1 ring-accent-500/20' : 'border-line',
-      draggable ? 'cursor-grab select-none' : '',
+      // -webkit-touch-callout stops iOS popping its selection/callout UI on
+      // the long press, which would fight the drag for the same gesture.
+      draggable ? 'cursor-grab select-none [-webkit-touch-callout:none]' : '',
       // Held cards shrink a little rather than growing: at phone width the
       // ghost sits exactly over the row it's aiming at, so it has to leave a
       // margin for that row's highlight to show around it.
