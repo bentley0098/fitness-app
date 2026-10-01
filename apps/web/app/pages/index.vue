@@ -59,11 +59,11 @@
               <p class="mt-0.5 text-xs text-subtle">
                 {{ data.week.sessionsCompleted }} of {{ data.week.sessionsPlanned }} sessions done
               </p>
-              <div class="mt-2">
-                <Sparkline :points="data.sparklines.weeklyVolumeKm" />
-                <p class="mt-0.5 text-[10px] text-subtle">Weekly volume, last 8 weeks</p>
-              </div>
             </div>
+          </div>
+
+          <div class="rounded-card border border-line bg-surface p-4 shadow-card">
+            <WeeklyVolumeChart :weeks="data.weeklyVolume" />
           </div>
         </section>
 

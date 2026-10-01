@@ -2,7 +2,7 @@ import { computeWorkloadRatio, evaluate } from "@fitness/engine";
 import { addDaysIso, isoDate } from "./dates";
 import { db } from "./db";
 import { loadTrainingWindow } from "./trainingData";
-import { buildDay } from "./planCompletion";
+import { buildDay, totalsFor } from "./planCompletion";
 import { mondayOf, weekDates, weekEndForStart, weekNumberFor } from "./planMeta";
 import { raceInfo } from "./planView";
 import { selectTolerant } from "./optionalColumns";
@@ -22,16 +22,10 @@ import {
 // and derives the rest from the window already in memory.
 
 const SPARKLINE_DAYS = 7;
-const VOLUME_WEEKS = 8;
+const VOLUME_WEEKS = 12;
 const RECENT_ACTIVITY_LIMIT = 5;
 /** Matches computeWorkloadRatio's own floor for a meaningful reading. */
 const MIN_HISTORY_DAYS = 14;
-
-function sumDistance(activities: { date: string; distanceM?: number | null }[], from: string, to: string): number {
-  return activities
-    .filter((a) => a.date >= from && a.date <= to)
-    .reduce((sum, a) => sum + (a.distanceM ?? 0), 0);
-}
 
 function mean(values: (number | null | undefined)[]): number | null {
   const valid = values.filter((v): v is number => v != null && Number.isFinite(v));
@@ -63,6 +57,10 @@ export async function buildDashboard() {
 
   const weekStart = mondayOf(today);
   const dates = weekDates(weekStart);
+  // Sessions are fetched back far enough to cover the volume chart's lookback
+  // too, so matchDay can tell a walk/run-plan walk from unrelated cross-training
+  // in those weeks, not just in the current one.
+  const volumeStart = addDaysIso(weekStart, -(VOLUME_WEEKS - 1) * 7);
 
   // Three narrow queries alongside the window. The window's health metrics are
   // mapped to the ENGINE's type, which deliberately has no sleep fields — so
@@ -76,7 +74,7 @@ export async function buildDashboard() {
         .lte("date", today)
         .order("date", { ascending: true }),
     ),
-    db.from("plan_sessions").select("*").gte("date", weekStart).lte("date", addDaysIso(weekStart, 20)),
+    db.from("plan_sessions").select("*").gte("date", volumeStart).lte("date", addDaysIso(weekStart, 20)),
     selectTolerant("activities", ACTIVITY_COLUMNS, ACTIVITY_BASE_COLUMNS, (cols) =>
       db.from("activities").select(cols).order("date", { ascending: false }).limit(RECENT_ACTIVITY_LIMIT),
     ),
@@ -133,10 +131,27 @@ export async function buildDashboard() {
   const sparkDates = Array.from({ length: SPARKLINE_DAYS }, (_, i) => addDaysIso(today, -(SPARKLINE_DAYS - 1 - i)));
   const metricFor = (d: string) => metrics.find((m) => m.date === d) ?? null;
 
-  const weeklyVolumeKm = Array.from({ length: VOLUME_WEEKS }, (_, i) => {
-    const end = addDaysIso(weekStart, -(VOLUME_WEEKS - 1 - i) * 7 + 6);
-    const start = addDaysIso(end, -6);
-    return sumDistance(activityRows, start, end) / 1000;
+  // Run/walk-run totals per week, via the same matchDay machinery as "This
+  // week" and the /plan screen — not a raw sum of distanceM, which counted
+  // every activity type (cycling, hiking, ...) and so disagreed with the
+  // headline number right above it.
+  const weeklyVolume = Array.from({ length: VOLUME_WEEKS }, (_, i) => {
+    const start = addDaysIso(weekStart, -(VOLUME_WEEKS - 1 - i) * 7);
+    const weekDaysView =
+      start === weekStart
+        ? days
+        : weekDates(start).map((date) =>
+            buildDay(date, sessions.find((s) => s.date === date) ?? null, activityRows as any, today),
+          );
+    const totals = totalsFor(weekDaysView);
+    return {
+      weekStart: start,
+      weekEnd: weekEndForStart(start),
+      number: weekNumberFor(start),
+      distanceM: totals.actualDistanceM,
+      movingTimeS: totals.actualMovingTimeS,
+      isCurrent: start === weekStart,
+    };
   });
 
   return {
@@ -199,8 +214,9 @@ export async function buildDashboard() {
       restingHr: sparkDates.map((d) => metricFor(d)?.restingHr ?? null),
       sleepScore: sparkDates.map((d) => metricFor(d)?.sleep.score ?? null),
       bodyBattery: sparkDates.map((d) => metricFor(d)?.bodyBatteryMax ?? null),
-      weeklyVolumeKm,
     },
+
+    weeklyVolume,
 
     recentActivities: (recentRows ?? []).map(toActivityDto),
     lastActivityAt: activityRows.length ? activityRows[activityRows.length - 1]!.date : null,
