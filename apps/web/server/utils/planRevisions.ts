@@ -29,10 +29,10 @@ async function currentWeeklyVolumeM(): Promise<number> {
   return window.activities.filter((a) => a.date >= weekStart && a.date <= asOfDate).reduce((sum, a) => sum + (a.distanceM ?? 0), 0);
 }
 
-// The engine-driven write path for plan_sessions/plan_revisions — used by both
-// the MCP propose_revision tool and the deterministic weekly-draft cron. Spec
-// Section 5: "model output is clamped by the engine after generation,
-// always" — this is where that happens, regardless of what called it.
+// The engine-driven write path for plan_sessions/plan_revisions — used by the
+// MCP propose_revision tool. Spec Section 5: "model output is clamped by the
+// engine after generation, always" — this is where that happens, regardless
+// of what called it.
 //
 // moveSession() at the foot of this file is the other writer, and deliberately
 // skips the clamp: it only ever shuffles sessions between days inside one ISO
