@@ -42,3 +42,19 @@ export const db = new Proxy({} as SupabaseClient, {
     return typeof value === "function" ? value.bind(real) : value;
   },
 });
+
+// Supabase's secret API key isn't a static JWT — the edge gateway mints a
+// short-lived one per request and PostgREST verifies it against its own
+// clock. A moment of skew between those two makes PostgREST reject an
+// otherwise-fine request with "JWT issued at future". It's transient and
+// request-scoped, so one retry is enough to land on a request where the
+// clocks agree.
+const JWT_ISSUED_AT_FUTURE = /JWT issued at future/i;
+
+export async function withJwtRetry<T extends { error: { message?: string | null } | null }>(
+  run: () => PromiseLike<T>,
+): Promise<T> {
+  const first = await run();
+  if (!JWT_ISSUED_AT_FUTURE.test(first.error?.message ?? "")) return first;
+  return run();
+}

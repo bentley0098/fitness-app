@@ -3,7 +3,7 @@ import type { Activity, DailyHealthMetrics, EngineParams, EvaluationResult, Trai
 // isoDate/addDaysIso live in ./dates — pure, so callers that only need date
 // arithmetic (planMeta and its tests) don't construct a Supabase client.
 import { isoDate } from "./dates";
-import { db } from "./db";
+import { db, withJwtRetry } from "./db";
 import { selectTolerant } from "./optionalColumns";
 import {
   ACTIVITY_BASE_COLUMNS,
@@ -28,13 +28,17 @@ export async function loadTrainingWindow(): Promise<TrainingWindow> {
     // Garmin blob for every row, on every request that touches the window.
     // Nothing downstream of here reads it. Wrapped so a database still on the
     // pre-0006 schema degrades instead of failing the request.
-    selectTolerant(ACTIVITY_TABLE, ACTIVITY_COLUMNS, ACTIVITY_BASE_COLUMNS, (cols) =>
-      db.from(ACTIVITY_TABLE).select(cols).order("date", { ascending: true }),
+    withJwtRetry(() =>
+      selectTolerant(ACTIVITY_TABLE, ACTIVITY_COLUMNS, ACTIVITY_BASE_COLUMNS, (cols) =>
+        db.from(ACTIVITY_TABLE).select(cols).order("date", { ascending: true }),
+      ),
     ),
-    selectTolerant(METRIC_TABLE, HEALTH_METRIC_COLUMNS, HEALTH_METRIC_BASE_COLUMNS, (cols) =>
-      db.from(METRIC_TABLE).select(cols).order("date", { ascending: true }),
+    withJwtRetry(() =>
+      selectTolerant(METRIC_TABLE, HEALTH_METRIC_COLUMNS, HEALTH_METRIC_BASE_COLUMNS, (cols) =>
+        db.from(METRIC_TABLE).select(cols).order("date", { ascending: true }),
+      ),
     ),
-    db.from("engine_params").select("*").order("version", { ascending: false }).limit(1),
+    withJwtRetry(() => db.from("engine_params").select("*").order("version", { ascending: false }).limit(1)),
   ]);
 
   if (activityErr) throw new Error(`Load activities failed: ${activityErr.message}`);
