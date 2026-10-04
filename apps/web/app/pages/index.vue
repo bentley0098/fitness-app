@@ -5,8 +5,27 @@
         <div class="text-xs text-subtle">{{ todayLabel }}</div>
         <h1 class="text-xl font-bold text-ink">Today</h1>
       </div>
-      <NuxtLink to="/more/log" class="text-xs font-medium text-accent-700">Add note</NuxtLink>
+      <div class="flex items-center gap-3">
+        <button
+          type="button"
+          class="flex items-center gap-1 text-xs font-medium text-accent-700 disabled:opacity-60"
+          :disabled="syncing"
+          @click="syncNow"
+        >
+          <AppIcon name="refresh" :size="14" :class="syncing ? 'animate-spin' : ''" />
+          {{ syncing ? "Syncing…" : "Sync" }}
+        </button>
+        <NuxtLink to="/more/log" class="text-xs font-medium text-accent-700">Add note</NuxtLink>
+      </div>
     </header>
+    <p
+      v-if="syncMessage"
+      class="-mt-2 text-right text-xs"
+      :class="syncFailed ? 'text-verdict-regress' : 'text-subtle'"
+      role="status"
+    >
+      {{ syncMessage }}
+    </p>
 
     <AsyncState :pending="pending" :error="error" title="Couldn't load your dashboard" :skeletons="4">
       <template v-if="data">
@@ -141,9 +160,34 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 
-const { data, pending, error } = await useFetch("/api/dashboard");
+const { data, pending, error, refresh } = await useFetch("/api/dashboard");
+
+const syncing = ref(false);
+const syncMessage = ref("");
+const syncFailed = ref(false);
+
+async function syncNow() {
+  if (syncing.value) return;
+  syncing.value = true;
+  syncFailed.value = false;
+  syncMessage.value = "";
+  try {
+    const res = await $fetch<{ newActivities: number; errors: string[] }>("/api/sync", { method: "POST" });
+    await refresh();
+    const found = res.newActivities
+      ? `${res.newActivities} new ${res.newActivities === 1 ? "activity" : "activities"}`
+      : "no new activities";
+    syncFailed.value = res.errors.length > 0;
+    syncMessage.value = res.errors.length ? `Synced with ${res.errors.length} error(s): ${res.errors[0]}` : `Synced · ${found}`;
+  } catch (e: any) {
+    syncFailed.value = true;
+    syncMessage.value = e?.data?.statusMessage ?? e?.statusMessage ?? "Sync failed";
+  } finally {
+    syncing.value = false;
+  }
+}
 
 const todayLabel = new Date().toLocaleDateString(undefined, {
   weekday: "long",
