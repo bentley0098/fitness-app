@@ -1,5 +1,6 @@
 import { syncGarminActivities } from "../../utils/syncGarmin";
 import { syncHealthMetrics } from "../../utils/syncHealthMetrics";
+import { syncRacePredictions } from "../../utils/syncRacePredictions";
 
 // Vercel Cron attaches "Authorization: Bearer $CRON_SECRET" automatically to
 // its own invocations when CRON_SECRET is set as an env var — this rejects
@@ -16,5 +17,7 @@ export default defineEventHandler(async (event) => {
   const activities = await syncGarminActivities();
   const healthMetrics = await syncHealthMetrics();
 
-  return { activities, healthMetrics };
+  const racePredictions = await syncRacePredictions();
+
+  return { activities, healthMetrics, racePredictions };
 });

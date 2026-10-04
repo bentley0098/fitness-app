@@ -16,6 +16,15 @@ describe("isMissingColumnError", () => {
     expect(isMissingColumnError(messageOnly)).toBe(true);
   });
 
+  it("matches PostgREST's schema-cache miss on writes (PGRST204)", () => {
+    const err = {
+      code: "PGRST204",
+      message: "Could not find the 'vo2_max' column of 'daily_health_metrics' in the schema cache",
+    };
+    expect(isMissingColumnError(err)).toBe(true);
+    expect(isMissingColumnError({ code: null, message: err.message })).toBe(true);
+  });
+
   it("does not swallow unrelated errors", () => {
     expect(isMissingColumnError(otherError)).toBe(false);
     expect(isMissingColumnError(null)).toBe(false);

@@ -47,21 +47,6 @@
             </template>
           </SectionHeader>
 
-          <div class="flex items-center gap-4 rounded-card border border-line bg-surface p-4 shadow-card">
-            <ProgressRing :value="weekProgress" :size="72" :stroke="7">
-              <span class="tnum text-base font-bold text-ink">{{ Math.round(weekProgress * 100) }}<span class="text-[10px] font-medium text-subtle">%</span></span>
-            </ProgressRing>
-            <div class="min-w-0 flex-1">
-              <div class="tnum text-lg font-semibold text-ink">
-                {{ formatDistance(data.week.actualDistanceM) }}
-                <span class="text-sm font-normal text-subtle">/ {{ formatDistance(data.week.plannedDistanceM) }} km</span>
-              </div>
-              <p class="mt-0.5 text-xs text-subtle">
-                {{ data.week.sessionsCompleted }} of {{ data.week.sessionsPlanned }} sessions done
-              </p>
-            </div>
-          </div>
-
           <div class="rounded-card border border-line bg-surface p-4 shadow-card">
             <WeeklyVolumeChart :weeks="data.weeklyVolume" />
           </div>
@@ -123,6 +108,15 @@
           </div>
         </section>
 
+        <!-- Race predictions -->
+        <section v-if="data.racePredictions" class="space-y-2">
+          <SectionHeader
+            title="Race predictions"
+            :sub="`Garmin · ${formatDate(data.racePredictions.date, { day: 'numeric', month: 'short' })}`"
+          />
+          <RacePredictionsCard :predictions="data.racePredictions" />
+        </section>
+
         <!-- Recent activity -->
         <section v-if="data.recentActivities.length" class="space-y-2">
           <SectionHeader title="Recent runs">
@@ -158,12 +152,6 @@ const todayLabel = new Date().toLocaleDateString(undefined, {
 });
 
 const metrics = computed(() => data.value?.today.metrics ?? null);
-
-const weekProgress = computed(() => {
-  const w = data.value?.week;
-  if (!w || !w.plannedDistanceM) return 0;
-  return w.actualDistanceM / w.plannedDistanceM;
-});
 
 // Garmin's own Training Load isn't reachable through the Node SDK, so this is
 // the engine's acute:chronic ratio — labelled honestly rather than dressed up

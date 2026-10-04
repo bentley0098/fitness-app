@@ -12,11 +12,16 @@
 // finally ran, until someone redeployed. The extra round trip only happens
 // while the schema is actually behind.
 
-/** PostgREST's undefined_column. Also matched on message, since the code isn't always populated. */
+/**
+ * A column the database doesn't have. Postgres reports 42703 on reads; on
+ * writes PostgREST answers PGRST204 ("Could not find the 'x' column of 't' in
+ * the schema cache") before Postgres is ever asked. Also matched on message,
+ * since the code isn't always populated.
+ */
 export function isMissingColumnError(error: { code?: string | null; message?: string | null } | null): boolean {
   if (!error) return false;
-  if (error.code === "42703") return true;
-  return /column .* does not exist/i.test(error.message ?? "");
+  if (error.code === "42703" || error.code === "PGRST204") return true;
+  return /column .* does not exist|could not find the .* column/i.test(error.message ?? "");
 }
 
 let warned = false;

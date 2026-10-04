@@ -33,11 +33,21 @@ function mean(values: (number | null | undefined)[]): number | null {
 }
 
 /**
- * VO2 max history. Unlike the other reads this both selects and filters on a
- * post-0006 column, so there is no reduced column set to fall back to — if the
- * migration hasn't run, the honest answer is "no data", not an error.
+ * VO2 max history, newest first. Prefers the daily metric (Garmin's max-metrics
+ * endpoint), which carries a value for every recompute day; falls back to the
+ * per-activity column for history from before that sync existed. Both select on
+ * post-migration columns, so if neither exists the honest answer is "no data",
+ * not an error.
  */
 async function loadVo2Series(): Promise<{ date: string; vo2_max: number }[]> {
+  const daily = await db
+    .from("daily_health_metrics")
+    .select("date, vo2_max")
+    .not("vo2_max", "is", null)
+    .order("date", { ascending: false })
+    .limit(60);
+  if (!daily.error && daily.data?.length) return daily.data as { date: string; vo2_max: number }[];
+
   const { data, error } = await db
     .from("activities")
     .select("date, vo2_max")
@@ -47,6 +57,44 @@ async function loadVo2Series(): Promise<{ date: string; vo2_max: number }[]> {
 
   if (error) return [];
   return (data ?? []) as { date: string; vo2_max: number }[];
+}
+
+interface RacePredictionRow {
+  date: string;
+  time_5k_s: number | null;
+  time_10k_s: number | null;
+  time_half_s: number | null;
+  time_marathon_s: number | null;
+}
+
+/** Newest first. Empty if the table doesn't exist yet (migration 0007 not applied). */
+async function loadRacePredictions(today: string): Promise<RacePredictionRow[]> {
+  const { data, error } = await db
+    .from("race_predictions")
+    .select("date, time_5k_s, time_10k_s, time_half_s, time_marathon_s")
+    .gte("date", addDaysIso(today, -30))
+    .order("date", { ascending: false });
+  return error ? [] : ((data ?? []) as RacePredictionRow[]);
+}
+
+function racePredictionsDto(rows: RacePredictionRow[]) {
+  const latest = rows[0];
+  if (!latest) return null;
+  // Garmin only serves the current prediction, so history accrues from the
+  // first sync. Compare against the oldest snapshot in the 30-day window.
+  const prior = rows.length > 1 ? rows[rows.length - 1]! : null;
+  const delta = (cur: number | null, old: number | null | undefined) =>
+    cur != null && old != null ? cur - old : null;
+  return {
+    date: latest.date,
+    priorDate: prior?.date ?? null,
+    distances: [
+      { key: "5k", label: "5K", seconds: latest.time_5k_s, deltaS: delta(latest.time_5k_s, prior?.time_5k_s) },
+      { key: "10k", label: "10K", seconds: latest.time_10k_s, deltaS: delta(latest.time_10k_s, prior?.time_10k_s) },
+      { key: "half", label: "Half", seconds: latest.time_half_s, deltaS: delta(latest.time_half_s, prior?.time_half_s) },
+      { key: "marathon", label: "Marathon", seconds: latest.time_marathon_s, deltaS: delta(latest.time_marathon_s, prior?.time_marathon_s) },
+    ],
+  };
 }
 
 export async function buildDashboard() {
@@ -65,7 +113,7 @@ export async function buildDashboard() {
   // Three narrow queries alongside the window. The window's health metrics are
   // mapped to the ENGINE's type, which deliberately has no sleep fields — so
   // the raw rows are fetched separately for display.
-  const [{ data: metricRows }, { data: planRows }, { data: recentRows }, vo2Rows] = await Promise.all([
+  const [{ data: metricRows }, { data: planRows }, { data: recentRows }, vo2Rows, raceRows] = await Promise.all([
     selectTolerant("daily_health_metrics", HEALTH_METRIC_COLUMNS, HEALTH_METRIC_BASE_COLUMNS, (cols) =>
       db
         .from("daily_health_metrics")
@@ -79,6 +127,7 @@ export async function buildDashboard() {
       db.from("activities").select(cols).order("date", { ascending: false }).limit(RECENT_ACTIVITY_LIMIT),
     ),
     loadVo2Series(),
+    loadRacePredictions(today),
   ]);
 
   const metrics = (metricRows ?? []).map(toHealthMetricsDto);
@@ -150,6 +199,7 @@ export async function buildDashboard() {
       number: weekNumberFor(start),
       distanceM: totals.actualDistanceM,
       movingTimeS: totals.actualMovingTimeS,
+      sessionsCompleted: totals.sessionsCompleted,
       isCurrent: start === weekStart,
     };
   });
@@ -207,6 +257,8 @@ export async function buildDashboard() {
       date: currentVo2?.date ?? null,
       delta30d: currentVo2 && priorVo2 ? currentVo2.vo2_max - priorVo2.vo2_max : null,
     },
+
+    racePredictions: racePredictionsDto(raceRows),
 
     race: raceInfo(today),
 

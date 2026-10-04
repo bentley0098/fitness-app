@@ -50,6 +50,13 @@
       "when": 1790089448277,
       "tag": "0006_nice_captain_cross",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791141361770,
+      "tag": "0007_wide_genesis",
+      "breakpoints": true
     }
   ]
 }

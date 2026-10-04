@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { garmin } from "./garmin";
 import { extractSleep } from "./garminSleep";
+import { fetchVo2MaxByDay } from "./garminMetrics";
 import { SLEEP_OPTIONAL_KEYS, writeTolerant } from "./optionalColumns";
 
 export interface HealthMetricsSyncResult {
@@ -43,6 +44,19 @@ export async function syncHealthMetrics(days = 7): Promise<HealthMetricsSyncResu
   }
 
   const result: HealthMetricsSyncResult = { daysProcessed: 0, upserted: 0, errors: [] };
+
+  // One ranged call for the whole window. Garmin only lists days it recomputed
+  // VO2 max, so a missing day is left out of the upsert entirely rather than
+  // written as null — that would erase the value a previous run stored.
+  let vo2ByDay = new Map<string, number>();
+  try {
+    const end = new Date();
+    const start = new Date();
+    start.setDate(start.getDate() - (days - 1));
+    vo2ByDay = await fetchVo2MaxByDay(isoDate(start), isoDate(end));
+  } catch (err) {
+    result.errors.push(`vo2Max fetch failed — ${err instanceof Error ? err.message : String(err)}`);
+  }
 
   for (let i = 0; i < days; i++) {
     const date = new Date();
@@ -98,10 +112,16 @@ export async function syncHealthMetrics(days = 7): Promise<HealthMetricsSyncResu
           body_battery_max: bbMax,
           stress_avg: stressAvg,
           ...extractSleep(sleep, day),
+          ...(vo2ByDay.has(day) ? { vo2_max: vo2ByDay.get(day) } : {}),
           raw_payload: { hrv, bodyBattery, heartRate, stress, sleep },
         },
         SLEEP_OPTIONAL_KEYS,
-        (row) => db.from("daily_health_metrics").upsert(row, { onConflict: "date" }),
+        // Nested so a missing vo2_max column (migration 0007) costs only the
+        // VO2 value, not the sleep columns that migration 0006 already added.
+        (row) =>
+          writeTolerant("daily_health_metrics", row, ["vo2_max"], (r) =>
+            db.from("daily_health_metrics").upsert(r, { onConflict: "date" }),
+          ),
       );
 
       if (error) {

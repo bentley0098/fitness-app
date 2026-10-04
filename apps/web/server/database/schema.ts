@@ -42,6 +42,9 @@ export const dailyHealthMetrics = pgTable("daily_health_metrics", {
   bodyBatteryMin: doublePrecision("body_battery_min"),
   bodyBatteryMax: doublePrecision("body_battery_max"),
   stressAvg: doublePrecision("stress_avg"),
+  // Garmin's precise daily VO2 max (running), from the max-metrics endpoint.
+  // Only set on days Garmin recomputed it — null means "no new value", not zero.
+  vo2Max: doublePrecision("vo2_max"),
   // Sleep, from garmin.sleep.getDailySleep(). Display-only — the engine never
   // reads these (see packages/engine/src/types.ts, which deliberately does not
   // carry them). Attributed to the day the night ENDS on, matching Garmin's
@@ -57,6 +60,17 @@ export const dailyHealthMetrics = pgTable("daily_health_metrics", {
   sleepStartLocal: timestamp("sleep_start_local"),
   sleepEndLocal: timestamp("sleep_end_local"),
   rawPayload: jsonb("raw_payload"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Garmin's race-time predictions, one snapshot per day. Display-only.
+export const racePredictions = pgTable("race_predictions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  date: date("date").notNull().unique(),
+  time5kS: doublePrecision("time_5k_s"),
+  time10kS: doublePrecision("time_10k_s"),
+  timeHalfS: doublePrecision("time_half_s"),
+  timeMarathonS: doublePrecision("time_marathon_s"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

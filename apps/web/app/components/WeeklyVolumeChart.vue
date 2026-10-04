@@ -1,14 +1,20 @@
 <template>
   <div>
-    <div class="tnum text-lg font-semibold text-ink">
-      {{ formatDistance(selected.distanceM) }}
-      <span class="text-sm font-normal text-subtle">km</span>
+    <div class="flex items-baseline justify-between">
+      <div class="tnum text-lg font-semibold text-ink">
+        {{ formatDistance(selected.distanceM) }}
+        <span class="text-sm font-normal text-subtle">km</span>
+      </div>
+      <div class="tnum text-lg font-semibold text-ink">
+        {{ selected.sessionsCompleted }}
+        <span class="text-sm font-normal text-subtle">{{ selected.sessionsCompleted === 1 ? "session" : "sessions" }}</span>
+      </div>
     </div>
     <p class="mt-0.5 text-xs text-subtle">
       {{ formatHoursMinutes(selected.movingTimeS) }} running · {{ weekLabel(selected) }}
     </p>
 
-    <div class="relative mt-3 h-14 w-full">
+    <div class="relative mt-3 h-24 w-full">
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="absolute inset-0 h-full w-full overflow-visible">
         <polygon v-if="areaPoints" :points="areaPoints" class="fill-accent-500/15" />
         <polyline
@@ -31,6 +37,8 @@
         :style="{ left: `${xPct(i)}%` }"
         :aria-label="`Week of ${w.weekStart}, ${formatDistance(w.distanceM)} km`"
         :aria-pressed="i === activeIndex"
+        @mouseenter="selectedIndex = i"
+        @focus="selectedIndex = i"
         @click="selectedIndex = i"
       >
         <span
@@ -52,6 +60,7 @@ interface Week {
   number: number;
   distanceM: number;
   movingTimeS: number;
+  sessionsCompleted: number;
   isCurrent: boolean;
 }
 
