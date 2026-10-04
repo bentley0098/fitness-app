@@ -133,6 +133,19 @@ export function buildOverview(snapshot: PlanSnapshot) {
       phase: phaseForWeek(snapshot.sessions, dates),
       sessionCount: totals.sessionsPlanned,
       ...totals,
+      // The week card's session list: one row per planned session, with the
+      // derived completion state so the client can strike finished ones.
+      sessions: days
+        .filter((d) => d.session)
+        .map((d) => ({
+          id: d.session!.id,
+          date: d.date,
+          type: d.session!.type,
+          label: d.session!.label,
+          targetDistanceM: d.session!.targetDistanceM,
+          state: d.completion.state,
+          actualDistanceM: d.completion.actualDistanceM,
+        })),
       status: number < currentWeekNumber ? "done" : number === currentWeekNumber ? "current" : "upcoming",
     };
   });
