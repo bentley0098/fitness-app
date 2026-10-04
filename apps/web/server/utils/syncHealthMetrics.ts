@@ -50,15 +50,24 @@ export async function syncHealthMetrics(days = 7): Promise<HealthMetricsSyncResu
     const day = isoDate(date);
     result.daysProcessed++;
 
+    // A failed endpoint stores null for that metric, but is reported in
+    // result.errors — a bare .catch(() => null) hid a schema-validation
+    // failure that left sleep empty for weeks.
+    const soft = <T>(name: string, p: Promise<T>): Promise<T | null> =>
+      p.catch((err) => {
+        result.errors.push(`${day}: ${name} fetch failed — ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      });
+
     try {
       const [hrv, bodyBattery, heartRate, stress, sleep] = await Promise.all([
-        garmin.health.getHrvStatus(date).catch(() => null),
-        garmin.health.getBodyBattery(date).catch(() => null),
-        garmin.health.getHeartRate(date).catch(() => null),
-        garmin.health.getStress(date).catch(() => null),
+        soft("hrv", garmin.health.getHrvStatus(date)),
+        soft("bodyBattery", garmin.health.getBodyBattery(date)),
+        soft("heartRate", garmin.health.getHeartRate(date)),
+        soft("stress", garmin.health.getStress(date)),
         // Sleep lives on its own endpoint namespace, not health.*. Display
         // only — the engine never reads it.
-        garmin.sleep.getDailySleep(date).catch(() => null),
+        soft("sleep", garmin.sleep.getDailySleep(date)),
       ]);
 
       const hrvRaw = hrv as Raw | null;

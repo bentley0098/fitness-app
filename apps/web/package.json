@@ -22,7 +22,7 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@pinia/nuxt": "^0.9.0",
     "@supabase/supabase-js": "^2.45.0",
-    "garmin-connect-sdk": "^1.1.0",
+    "garmin-connect-sdk": "^1.2.0",
     "nuxt": "^4.5.2",
     "pinia": "^3.0.0",
     "vue": "^3.5.42",
