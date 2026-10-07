@@ -3,6 +3,7 @@ import { evaluate } from "@fitness/engine";
 import { z } from "zod";
 import { db } from "../utils/db";
 import { applyRevision, proposeRevision } from "../utils/planRevisions";
+import { ProposalError, createProposal, loadPlannerSessions } from "../utils/planProposals";
 import { addDaysIso, isoDate } from "../utils/dates";
 import { loadTrainingWindow } from "../utils/trainingData";
 
@@ -13,7 +14,7 @@ function textResult(value: unknown) {
 // Fresh server per request (see server/api/mcp.ts) — stateless transport,
 // so there's nothing to gain from a long-lived singleton here, and it keeps
 // each call's data as fresh as the moment it was invoked.
-export function createMcpServer(): McpServer {
+export function createMcpServer(appOrigin = ""): McpServer {
   const server = new McpServer({ name: "adaptive-training", version: "1.0.0" });
 
   server.registerTool(
@@ -37,6 +38,47 @@ export function createMcpServer(): McpServer {
         healthMetrics: window.healthMetrics.filter((m) => m.date >= from),
         engineParams: window.engineParams,
       });
+    },
+  );
+
+  server.registerTool(
+    "get_sessions",
+    {
+      description:
+        "Planned sessions between two ISO dates (inclusive), each with its id, date, phase, type, prescription, cap, status and revision. Use the id when proposing a change.",
+      inputSchema: { from: z.string().describe("ISO date, inclusive"), to: z.string().describe("ISO date, inclusive") },
+    },
+    async ({ from, to }) => {
+      const sessions = (await loadPlannerSessions()).filter((s) => s.date >= from && s.date <= to);
+      return textResult(sessions);
+    },
+  );
+
+  server.registerTool(
+    "propose_session_change",
+    {
+      description:
+        "Propose a change to one planned session. This never changes the plan: it stores a proposal that the runner approves or rejects in the app. You cannot apply it. patch.prescription is merged into the existing prescription, so send only the fields that change (e.g. {distanceKm: 8}). Status cannot be changed. Returns a link to the proposal and the weekly volume before and after.",
+      inputSchema: {
+        sessionId: z.string(),
+        patch: z.object({
+          type: z.string().optional(),
+          phase: z.string().optional(),
+          prescription: z.record(z.unknown()).optional(),
+          cap: z.record(z.unknown()).optional(),
+          notes: z.string().optional(),
+        }),
+        rationale: z.string().describe("Human-readable reason, shown on the proposal screen"),
+      },
+    },
+    async ({ sessionId, patch, rationale }) => {
+      try {
+        const created = await createProposal([{ kind: "update", sessionId, patch }], rationale);
+        return textResult({ ...created, link: `${appOrigin}/proposal/${created.proposalId}` });
+      } catch (e) {
+        if (e instanceof ProposalError) return { content: [{ type: "text" as const, text: e.message }], isError: true };
+        throw e;
+      }
     },
   );
 

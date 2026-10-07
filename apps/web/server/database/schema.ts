@@ -111,6 +111,24 @@ export const planRevisions = pgTable("plan_revisions", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// A set of operations Claude has proposed against the plan. Nothing here
+// touches plan_sessions until the proposal is approved in the app; the MCP
+// can create these but has no way to apply or reject them.
+export const planProposals = pgTable("plan_proposals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  rationale: text("rationale").notNull(),
+  // Ordered list of operations, each carrying the revision and date of the
+  // session it was made against (see server/utils/planProposal.ts).
+  operations: jsonb("operations").notNull(),
+  engineVerdict: text("engine_verdict").notNull(),
+  // pending | applied | rejected | superseded. Expiry is derived at read time
+  // from the operations' dates, never stored.
+  status: text("status").notNull().default("pending"),
+  statusNote: text("status_note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+});
+
 // Not part of the spec's core tables — infrastructure for the Garmin
 // ingestion mechanism (Section 3 update). Single row, keyed by a fixed id,
 // holding the OAuth token pair so the sync cron never needs an interactive

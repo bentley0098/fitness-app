@@ -57,6 +57,13 @@
       "when": 1791141361770,
       "tag": "0007_wide_genesis",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791380932586,
+      "tag": "0008_broad_newton_destine",
+      "breakpoints": true
     }
   ]
 }
