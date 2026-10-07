@@ -3,6 +3,7 @@ import { addDaysIso, isoDate } from "./dates";
 import { db } from "./db";
 import { loadTrainingWindow } from "./trainingData";
 import { buildDay, sessionsByDate, totalsFor } from "./planCompletion";
+import { loadStrengthLogsLike } from "./strengthLogs";
 import { mondayOf, weekDates, weekEndForStart, weekNumberFor } from "./planMeta";
 import { raceInfo } from "./planView";
 import { selectTolerant } from "./optionalColumns";
@@ -113,7 +114,7 @@ export async function buildDashboard() {
   // Three narrow queries alongside the window. The window's health metrics are
   // mapped to the ENGINE's type, which deliberately has no sleep fields — so
   // the raw rows are fetched separately for display.
-  const [{ data: metricRows }, { data: planRows }, { data: recentRows }, vo2Rows, raceRows] = await Promise.all([
+  const [{ data: metricRows }, { data: planRows }, { data: recentRows }, vo2Rows, raceRows, strengthLogs] = await Promise.all([
     selectTolerant("daily_health_metrics", HEALTH_METRIC_COLUMNS, HEALTH_METRIC_BASE_COLUMNS, (cols) =>
       db
         .from("daily_health_metrics")
@@ -128,6 +129,7 @@ export async function buildDashboard() {
     ),
     loadVo2Series(),
     loadRacePredictions(today),
+    loadStrengthLogsLike(),
   ]);
 
   const metrics = (metricRows ?? []).map(toHealthMetricsDto);
@@ -136,7 +138,7 @@ export async function buildDashboard() {
 
   // ---- This week -------------------------------------------------------
   const sessionsOn = sessionsByDate(sessions as any[]);
-  const days = dates.map((date) => buildDay(date, sessionsOn.get(date) ?? [], activityRows as any, today));
+  const days = dates.map((date) => buildDay(date, sessionsOn.get(date) ?? [], activityRows as any, today, strengthLogs));
   const { plannedDistanceM, actualDistanceM, sessionsPlanned, sessionsCompleted } = totalsFor(days);
   const weekTotals = { plannedDistanceM, actualDistanceM, sessionsPlanned, sessionsCompleted };
 
@@ -175,7 +177,7 @@ export async function buildDashboard() {
     const weekDaysView =
       start === weekStart
         ? days
-        : weekDates(start).map((date) => buildDay(date, sessionsOn.get(date) ?? [], activityRows as any, today));
+        : weekDates(start).map((date) => buildDay(date, sessionsOn.get(date) ?? [], activityRows as any, today, strengthLogs));
     const totals = totalsFor(weekDaysView);
     return {
       weekStart: start,
@@ -224,6 +226,7 @@ export async function buildDashboard() {
       restingHrDelta28d,
       sessions: todayDay?.sessions ?? [],
       unplanned: todayDay?.unplanned ?? null,
+      unplannedStrength: todayDay?.unplannedStrength ?? [],
       activities: (todayDay?.activities ?? []).map((a) => toActivityDto(a as Record<string, any>)),
     },
 

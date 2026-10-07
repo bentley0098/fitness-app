@@ -147,6 +147,9 @@ export function useLongPressDrag({ container, onDrop }: LongPressDragOptions) {
    */
   function onPointerDown(event: PointerEvent, key: string, originKey: string = key) {
     if (event.button !== 0 && event.pointerType === "mouse") return;
+    // A tap on a button or link inside a card is that control's, not a grab:
+    // capturing the pointer here would swallow its click.
+    if ((event.target as HTMLElement | null)?.closest("button, a, input, select, textarea")) return;
     const el = (event.currentTarget as HTMLElement) ?? null;
     if (!el) return;
 

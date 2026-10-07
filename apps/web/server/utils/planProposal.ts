@@ -217,9 +217,9 @@ export function isExpired(operations: Operation[], today: string): boolean {
   return earliest !== undefined && earliest < today;
 }
 
-/** Adds on the same day only compete when they add the same kind of session. */
+/** Adds on the same day only compete when they add the same session: same kind, and the same template for strength. */
 function addKey(op: AddRequest): string {
-  return `${op.date}|${op.type}`;
+  return `${op.date}|${op.type}|${op.prescription?.templateId ?? ""}`;
 }
 
 /**

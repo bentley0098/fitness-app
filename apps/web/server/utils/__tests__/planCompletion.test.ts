@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDay, countsToward, matchDay, sessionForEachActivity, totalsFor, type SessionLike } from "../planCompletion";
+import { buildDay, countsToward, matchDay, sessionForEachActivity, totalsFor, type SessionLike, type StrengthLogLike } from "../planCompletion";
 
 const TODAY = "2026-09-22";
 
@@ -215,5 +215,83 @@ describe("sessionForEachActivity", () => {
     const matched = sessionForEachActivity([session()], [run({ id: "ride", activity_type: "cycling" })]);
 
     expect(matched.has("ride")).toBe(false);
+  });
+});
+
+describe("planned strength sessions", () => {
+  const gymA = session({ id: "gym-a", type: "strength_gym", prescription: { templateId: "t1", templateName: "Gym A" } });
+  const log = (over: Partial<StrengthLogLike> = {}): StrengthLogLike => ({
+    id: "log1",
+    date: TODAY,
+    planSessionId: "gym-a",
+    templateName: "Gym A",
+    kind: "gym",
+    status: "finished",
+    ...over,
+  });
+
+  it("is completed once the log started from it is finished, with no Garmin activity needed", () => {
+    const d = buildDay(TODAY, [gymA], [], TODAY, [log()]);
+
+    expect(d.sessions[0]!.completion).toMatchObject({ state: "completed", logId: "log1" });
+  });
+
+  it("is under way while the log started from it is unfinished", () => {
+    const d = buildDay(TODAY, [gymA], [], TODAY, [log({ status: "in_progress" })]);
+
+    expect(d.sessions[0]!.completion).toMatchObject({ state: "partial", logId: "log1" });
+  });
+
+  it("is due today, upcoming or missed according to the day when nothing was logged", () => {
+    expect(buildDay(TODAY, [gymA], [], TODAY, []).sessions[0]!.completion.state).toBe("today");
+    expect(buildDay("2026-09-25", [{ ...gymA, date: "2026-09-25" }], [], TODAY, []).sessions[0]!.completion.state).toBe("upcoming");
+    expect(buildDay("2026-09-20", [{ ...gymA, date: "2026-09-20" }], [], TODAY, []).sessions[0]!.completion.state).toBe("missed");
+  });
+
+  it("is not completed by a log of another session, or by one started from nothing", () => {
+    const adHoc = log({ id: "adhoc", planSessionId: null, templateName: "Gym B" });
+    const d = buildDay("2026-09-20", [{ ...gymA, date: "2026-09-20" }], [], TODAY, [{ ...adHoc, date: "2026-09-20" }]);
+
+    expect(d.sessions[0]!.completion.state).toBe("missed");
+    expect(d.unplannedStrength).toEqual([expect.objectContaining({ id: "adhoc", templateName: "Gym B" })]);
+  });
+
+  it("lists a log with no plan link as unplanned, and one linked to a session as planned", () => {
+    const d = buildDay(TODAY, [gymA], [], TODAY, [log(), log({ id: "extra", planSessionId: null })]);
+
+    expect(d.unplannedStrength.map((l) => l.id)).toEqual(["extra"]);
+  });
+
+  it("counts the log started from it even when it was done on another day", () => {
+    const monday = { ...gymA, date: "2026-09-21" };
+    const d = buildDay("2026-09-21", [monday], [], TODAY, [log({ date: TODAY })]);
+
+    expect(d.sessions[0]!.completion).toMatchObject({ state: "completed", logId: "log1" });
+  });
+
+  it("does not list a log on another day as unplanned here", () => {
+    const d = buildDay(TODAY, [], [], TODAY, [log({ date: "2026-09-21", planSessionId: null })]);
+
+    expect(d.unplannedStrength).toEqual([]);
+  });
+
+  it("leaves a lone run its activities when a strength session shares the day", () => {
+    const d = buildDay(TODAY, [session(), gymA], [run({ id: "a1", distance_m: 3000 }), run({ id: "a2", distance_m: 2500 })], TODAY, []);
+
+    expect(d.sessions.find((s) => s.id === "s1")!.completion).toMatchObject({ actualDistanceM: 5500, state: "completed" });
+  });
+
+  it("is counted in its own line, leaving the run totals alone", () => {
+    const d = buildDay(TODAY, [session(), gymA], [run()], TODAY, [log()]);
+    const t = totalsFor([d]);
+
+    expect(t).toMatchObject({ sessionsPlanned: 1, sessionsCompleted: 1, plannedDistanceM: 5000, actualDistanceM: 5000 });
+    expect(t).toMatchObject({ strengthPlanned: 1, strengthCompleted: 1 });
+  });
+
+  it("names the planned run each activity counts towards without being confused by strength", () => {
+    const matched = sessionForEachActivity([gymA, session()], [run({ id: "a1" })]);
+
+    expect(matched.get("a1")?.id).toBe("s1");
   });
 });

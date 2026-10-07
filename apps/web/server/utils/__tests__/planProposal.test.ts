@@ -297,3 +297,45 @@ describe("weekly volume", () => {
     expect(result.ok && result.volume).toEqual([{ weekStart: "2026-09-21", beforeM: 0, afterM: 5_000 }]);
   });
 });
+
+describe("strength sessions in a proposal", () => {
+  const run = session({ id: "s-run", date: WED, prescription: { distanceKm: 5 } });
+  const gym = session({ id: "s-gym", date: WED, type: "strength_gym", prescription: { templateId: "t1", templateName: "Gym A" } });
+
+  it("moves like any other session, leaving the run on the day alone", () => {
+    const result = plan([run, gym], [{ kind: "move", sessionId: "s-gym", toDate: FRI }]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.after.find((s) => s.id === "s-gym")).toMatchObject({ date: FRI, revision: 2 });
+    expect(result.after.find((s) => s.id === "s-run")).toMatchObject({ date: WED, revision: 1 });
+  });
+
+  it("adds no distance to the week's volume, whether added, moved or removed", () => {
+    const added = plan([run], [{ kind: "add", date: FRI, phase: "base", type: "strength_gym", prescription: { templateId: "t1", templateName: "Gym A" } }]);
+    const removed = plan([run, gym], [{ kind: "remove", sessionId: "s-gym" }]);
+
+    expect(added.ok && added.volume).toEqual([{ weekStart: "2026-09-21", beforeM: 5_000, afterM: 5_000 }]);
+    expect(removed.ok && removed.volume).toEqual([{ weekStart: "2026-09-21", beforeM: 5_000, afterM: 5_000 }]);
+  });
+
+  it("refuses a change to a strength session that was edited since the proposal", () => {
+    const ops = snapshotOperations([gym], [{ kind: "remove", sessionId: "s-gym" }]);
+    if (!ops.ok) throw new Error(ops.message);
+
+    expect(planApply([{ ...gym, revision: 2 }], ops.operations)).toMatchObject({ ok: false, reason: "stale" });
+  });
+
+  it("keeps a pending add of a strength session when a run is added on the same day", () => {
+    const add = (type: string): Operation => ({ kind: "add", date: FRI, phase: "base", type, prescription: {}, sessionDate: FRI });
+
+    expect(selectSuperseded([{ id: "p1", operations: [add("strength_gym")] }], [add("easy_run")])).toEqual([]);
+  });
+
+  it("keeps a pending add of one template when a different template is added the same day", () => {
+    const add = (templateId: string): Operation => ({ kind: "add", date: FRI, phase: "base", type: "strength_gym", prescription: { templateId }, sessionDate: FRI });
+
+    expect(selectSuperseded([{ id: "p1", operations: [add("gym-a")] }], [add("gym-b")])).toEqual([]);
+    expect(selectSuperseded([{ id: "p1", operations: [add("gym-a")] }], [add("gym-a")])).toEqual(["p1"]);
+  });
+});

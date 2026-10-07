@@ -1,4 +1,4 @@
-import { sessionLabel, targetDistanceM, targetDurationS, type Prescription } from "./planLabels";
+import { isStrengthType, sessionLabel, targetDistanceM, targetDurationS, type Prescription } from "./planLabels";
 
 // Matches planned sessions against real Garmin activities.
 //
@@ -67,6 +67,19 @@ export interface Completion {
   pct: number | null;
   activityIds: string[];
   avgHr: number | null;
+  /** For a strength session: the log started from it, if any. */
+  logId?: string | null;
+}
+
+/** A strength log, as far as completion cares. */
+export interface StrengthLogLike {
+  id: string;
+  date: string;
+  /** The planned session it was started from; null for a session started on the spot. */
+  planSessionId: string | null;
+  templateName: string;
+  kind: string;
+  status: string;
 }
 
 function typeOf(a: ActivityLike): string {
@@ -158,6 +171,33 @@ export type DaySession = SessionLike & {
   completion: Completion;
 };
 
+/**
+ * Completion for a planned strength session. It is the runner's own log that
+ * decides, never a Garmin activity: finishing the session started from it is
+ * what completes it, whichever day that happened on.
+ */
+export function matchStrength(session: SessionLike, logs: StrengthLogLike[], todayIso: string): Completion {
+  const base = {
+    actualDistanceM: 0,
+    actualMovingTimeS: 0,
+    targetDistanceM: null,
+    targetDurationS: null,
+    pct: null,
+    activityIds: [],
+    avgHr: null,
+  };
+  const linked = logs.filter((l) => l.planSessionId === session.id);
+  const finished = linked.find((l) => l.status === "finished");
+  if (finished) return { ...base, state: "completed", logId: finished.id };
+
+  const underWay = linked.find((l) => l.status === "in_progress");
+  if (underWay) return { ...base, state: "partial", logId: underWay.id };
+
+  if (session.status === "skipped") return { ...base, state: "missed", logId: null };
+  if (session.date < todayIso) return { ...base, state: "missed", logId: null };
+  return { ...base, state: session.date === todayIso ? "today" : "upcoming", logId: null };
+}
+
 export interface DayView {
   date: string;
   isToday: boolean;
@@ -167,14 +207,19 @@ export interface DayView {
   activities: ActivityLike[];
   /** Runs no planned session claimed: "unplanned" when there are any, otherwise "rest". */
   unplanned: Completion;
+  /** Strength sessions done that day without starting from a planned one. */
+  unplannedStrength: StrengthLogLike[];
 }
 
 export interface WeekTotals {
   plannedDistanceM: number;
   actualDistanceM: number;
   actualMovingTimeS: number;
+  /** Run sessions only. Strength is counted on its own line. */
   sessionsPlanned: number;
   sessionsCompleted: number;
+  strengthPlanned: number;
+  strengthCompleted: number;
 }
 
 /** How far an activity is from what a session asked for, as a fraction of the ask. */
@@ -195,9 +240,11 @@ function mismatch(session: SessionLike, activity: ActivityLike): number {
  * left over, to be shown as an unplanned run.
  */
 export function assignActivities(
-  sessions: SessionLike[],
+  allSessions: SessionLike[],
   activities: ActivityLike[],
 ): { bySession: Map<string, ActivityLike[]>; leftover: ActivityLike[] } {
+  // Strength sessions are completed by their log, not by an activity.
+  const sessions = allSessions.filter((s) => !isStrengthType(s.type));
   const bySession = new Map<string, ActivityLike[]>(sessions.map((s) => [s.id, []]));
 
   if (sessions.length === 1) {
@@ -237,8 +284,15 @@ export function sessionForEachActivity(sessions: SessionLike[], activities: Acti
   return matched;
 }
 
-export function buildDay(date: string, sessions: SessionLike[], activities: ActivityLike[], todayIso: string): DayView {
+export function buildDay(
+  date: string,
+  sessions: SessionLike[],
+  activities: ActivityLike[],
+  todayIso: string,
+  strengthLogs: StrengthLogLike[] = [],
+): DayView {
   const dayActivities = activities.filter((a) => a.date === date);
+  const dayLogs = strengthLogs.filter((l) => l.date === date);
   const { bySession, leftover } = assignActivities(sessions, dayActivities);
 
   return {
@@ -250,10 +304,13 @@ export function buildDay(date: string, sessions: SessionLike[], activities: Acti
       label: sessionLabel(session.type, session.prescription),
       targetDistanceM: targetDistanceM(session.prescription),
       targetDurationS: targetDurationS(session.prescription),
-      completion: matchDay(session, bySession.get(session.id) ?? [], todayIso),
+      completion: isStrengthType(session.type)
+        ? matchStrength(session, strengthLogs, todayIso)
+        : matchDay(session, bySession.get(session.id) ?? [], todayIso),
     })),
     activities: dayActivities,
     unplanned: matchDay(null, leftover, todayIso),
+    unplannedStrength: dayLogs.filter((l) => l.planSessionId === null),
   };
 }
 
@@ -261,6 +318,11 @@ export function totalsFor(days: DayView[]): WeekTotals {
   return days.reduce<WeekTotals>(
     (acc, d) => {
       for (const s of d.sessions) {
+        if (isStrengthType(s.type)) {
+          acc.strengthPlanned++;
+          if (s.completion.state === "completed") acc.strengthCompleted++;
+          continue;
+        }
         acc.plannedDistanceM += s.targetDistanceM ?? 0;
         acc.actualDistanceM += s.completion.actualDistanceM;
         acc.actualMovingTimeS += s.completion.actualMovingTimeS;
@@ -271,6 +333,14 @@ export function totalsFor(days: DayView[]): WeekTotals {
       acc.actualMovingTimeS += d.unplanned.actualMovingTimeS;
       return acc;
     },
-    { plannedDistanceM: 0, actualDistanceM: 0, actualMovingTimeS: 0, sessionsPlanned: 0, sessionsCompleted: 0 },
+    {
+      plannedDistanceM: 0,
+      actualDistanceM: 0,
+      actualMovingTimeS: 0,
+      sessionsPlanned: 0,
+      sessionsCompleted: 0,
+      strengthPlanned: 0,
+      strengthCompleted: 0,
+    },
   );
 }

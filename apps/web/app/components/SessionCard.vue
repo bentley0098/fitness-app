@@ -15,7 +15,7 @@
       <StatPill v-if="isToday" tone="accent" label="Today" />
     </div>
 
-    <p v-if="!sessions.length" class="mt-1 text-sm font-medium text-subtle">Rest day</p>
+    <p v-if="!sessions.length && !unplannedStrength.length" class="mt-1 text-sm font-medium text-subtle">Rest day</p>
 
     <div v-else class="mt-1.5 divide-y divide-line">
       <div
@@ -27,6 +27,16 @@
         <SessionRow :session="session" :draggable="draggable" :is-source-gap="draggingId === session.id" />
       </div>
     </div>
+
+    <NuxtLink
+      v-for="log in unplannedStrength"
+      :key="log.id"
+      :to="`/strength/log/${log.id}`"
+      class="mt-2 flex items-center gap-1.5 text-xs text-muted"
+    >
+      <AppIcon name="dumbbell" :size="13" />
+      <span>{{ log.templateName }} · unplanned</span>
+    </NuxtLink>
 
     <!-- An unplanned run still deserves credit. -->
     <div
@@ -49,13 +59,15 @@ withDefaults(
     sessions: SessionRowData[];
     /** Runs no planned session claimed; null when the day has none to show. */
     unplanned?: { actualDistanceM: number } | null;
+    /** Strength sessions done that day without starting from a planned one. */
+    unplannedStrength?: { id: string; templateName: string }[];
     /** Whether each session's row can be picked up — the gesture itself lives in the parent. */
     draggable?: boolean;
     /** The session currently in hand, so its row shows the hole it left. */
     draggingId?: string | null;
     isDropTarget?: boolean;
   }>(),
-  { unplanned: null, draggable: false, draggingId: null, isDropTarget: false },
+  { unplanned: null, unplannedStrength: () => [], draggable: false, draggingId: null, isDropTarget: false },
 );
 
 defineEmits<{ grab: [event: PointerEvent, sessionId: string] }>();

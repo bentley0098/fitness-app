@@ -4,12 +4,12 @@
 
 **Blocked by:** 01, 05
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Planned strength sessions appear in the week view and on Today with a Start action
-- [ ] Starting from the plan links the log; finishing marks the session completed
-- [ ] A past planned session with no finished linked log shows as missed
-- [ ] An ad-hoc or different-template log shows as unplanned
-- [ ] Completion works with no Garmin activity
-- [ ] Move, remove and the stale-proposal revision checks work on strength sessions
-- [ ] Completion tests cover completed, missed and unplanned strength states
+- [x] Planned strength sessions appear in the week view and on Today with a Start action
+- [x] Starting from the plan links the log; finishing marks the session completed
+- [x] A past planned session with no finished linked log shows as missed
+- [x] An ad-hoc or different-template log shows as unplanned
+- [x] Completion works with no Garmin activity
+- [x] Move, remove and the stale-proposal revision checks work on strength sessions
+- [x] Completion tests cover completed, missed and unplanned strength states

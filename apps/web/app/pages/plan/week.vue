@@ -51,6 +51,7 @@
               :is-today="day.isToday"
               :sessions="day.sessions"
               :unplanned="day.unplanned"
+              :unplanned-strength="day.unplannedStrength"
               draggable
               :dragging-id="drag.activeKey.value"
               :is-drop-target="drag.isDragging.value && drag.overKey.value === day.date && draggedFrom?.date !== day.date"

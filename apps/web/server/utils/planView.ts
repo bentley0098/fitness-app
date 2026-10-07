@@ -13,7 +13,9 @@ import {
   weekNumberFor,
   weekStartForNumber,
 } from "./planMeta";
-import { buildDay, sessionsByDate, totalsFor, type ActivityLike, type DaySession, type SessionLike } from "./planCompletion";
+import { buildDay, sessionsByDate, totalsFor, type ActivityLike, type DaySession, type SessionLike, type StrengthLogLike } from "./planCompletion";
+import { isStrengthType } from "./planLabels";
+import { loadStrengthLogsLike } from "./strengthLogs";
 import { selectTolerant } from "./optionalColumns";
 import { ACTIVITY_BASE_COLUMNS, ACTIVITY_COLUMNS, toActivityDto } from "./serialize";
 
@@ -25,15 +27,17 @@ import { ACTIVITY_BASE_COLUMNS, ACTIVITY_COLUMNS, toActivityDto } from "./serial
 export interface PlanSnapshot {
   sessions: SessionLike[];
   activities: ActivityLike[];
+  strengthLogs: StrengthLogLike[];
   today: string;
 }
 
 export async function loadPlanSnapshot(): Promise<PlanSnapshot> {
-  const [{ data: sessionRows, error: sessionErr }, { data: activityRows, error: activityErr }] = await Promise.all([
+  const [{ data: sessionRows, error: sessionErr }, { data: activityRows, error: activityErr }, strengthLogs] = await Promise.all([
     db.from("plan_sessions").select("*").order("date", { ascending: true }),
     selectTolerant("activities", ACTIVITY_COLUMNS, ACTIVITY_BASE_COLUMNS, (cols) =>
       db.from("activities").select(cols).order("date", { ascending: true }),
     ),
+    loadStrengthLogsLike(),
   ]);
 
   if (sessionErr) throw createError({ statusCode: 500, statusMessage: `Load plan failed: ${sessionErr.message}` });
@@ -42,6 +46,7 @@ export async function loadPlanSnapshot(): Promise<PlanSnapshot> {
   return {
     sessions: (sessionRows ?? []) as SessionLike[],
     activities: (activityRows ?? []) as ActivityLike[],
+    strengthLogs,
     today: isoDate(new Date()),
   };
 }
@@ -65,6 +70,8 @@ function toSessionDto(s: DaySession) {
     targetDistanceM: s.targetDistanceM,
     targetDurationS: s.targetDurationS,
     completion: s.completion,
+    isStrength: isStrengthType(s.type),
+    templateId: typeof s.prescription?.templateId === "string" ? s.prescription.templateId : null,
   };
 }
 
@@ -75,7 +82,7 @@ export function buildWeek(snapshot: PlanSnapshot, anyDateInWeek: string) {
   const number = weekNumberFor(startIso);
 
   const sessionsOn = sessionsByDate(snapshot.sessions);
-  const days = dates.map((date) => buildDay(date, sessionsOn.get(date) ?? [], snapshot.activities, snapshot.today));
+  const days = dates.map((date) => buildDay(date, sessionsOn.get(date) ?? [], snapshot.activities, snapshot.today, snapshot.strengthLogs));
 
   const totals = totalsFor(days);
 
@@ -101,6 +108,7 @@ export function buildWeek(snapshot: PlanSnapshot, anyDateInWeek: string) {
       sessions: d.sessions.map(toSessionDto),
       activities: d.activities.map((a) => toActivityDto(a as Record<string, any>)),
       unplanned: d.unplanned,
+      unplannedStrength: d.unplannedStrength,
     })),
   };
 }
@@ -114,7 +122,7 @@ export function buildOverview(snapshot: PlanSnapshot) {
     const number = i + 1;
     const startDate = weekStartForNumber(number);
     const dates = weekDates(startDate);
-    const days = dates.map((date) => buildDay(date, sessionsOn.get(date) ?? [], snapshot.activities, snapshot.today));
+    const days = dates.map((date) => buildDay(date, sessionsOn.get(date) ?? [], snapshot.activities, snapshot.today, snapshot.strengthLogs));
     const totals = totalsFor(days);
 
     return {

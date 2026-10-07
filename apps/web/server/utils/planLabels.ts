@@ -15,7 +15,14 @@ const TYPE_LABELS: Record<string, string> = {
   walk_run_or_continuous: "Walk/run",
   marathon: "Marathon",
   "weekly-target": "Weekly target",
+  strength_gym: "Gym",
+  strength_physio: "Physio",
 };
+
+/** Planned sessions of strength work, as opposed to runs. The type says which kind. */
+export function isStrengthType(type: string | null | undefined): boolean {
+  return type === "strength_gym" || type === "strength_physio";
+}
 
 export function typeLabel(type: string | null | undefined): string {
   if (!type) return "Session";
@@ -52,6 +59,9 @@ export function targetDurationS(prescription: Prescription | null | undefined): 
 export function sessionLabel(type: string | null | undefined, prescription: Prescription | null | undefined): string {
   const p = prescription ?? {};
   const label = typeLabel(type);
+
+  // A strength session is named after its template.
+  if (isStrengthType(type)) return typeof p.templateName === "string" && p.templateName ? p.templateName : label;
 
   // Race day.
   const goal = typeof p.goal === "string" ? p.goal : null;

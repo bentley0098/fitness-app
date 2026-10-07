@@ -22,6 +22,7 @@ import {
   type LoggedSet,
   type TemplateSlot,
 } from "./strength";
+import type { StrengthLogLike } from "./planCompletion";
 import { loadExercises } from "./strengthStore";
 
 // The I/O half of the strength log. The rules (pre-fill, rows) live in
@@ -521,4 +522,26 @@ export async function loadExerciseHistory(exerciseId: string): Promise<ExerciseH
     .map(({ logId, date, templateName, sets }) => ({ logId, date, templateName, sets }));
 
   return { exercise, series: exerciseSeries(past, exercise.measure), recent };
+}
+
+/**
+ * Every strength log, trimmed to what plan completion needs. The plan screens
+ * show runs first and strength second, so if the strength tables are not there
+ * yet (a migration not applied) this reads as "no logs" rather than taking the
+ * whole plan down with it.
+ */
+export async function loadStrengthLogsLike(): Promise<StrengthLogLike[]> {
+  const { data, error } = await db.from("strength_logs").select("id, date, plan_session_id, template_name, kind, status");
+  if (error) {
+    console.warn(`[strength] could not load strength logs: ${error.message}`);
+    return [];
+  }
+  return (data ?? []).map((l) => ({
+    id: l.id,
+    date: l.date,
+    planSessionId: l.plan_session_id ?? null,
+    templateName: l.template_name,
+    kind: l.kind,
+    status: l.status,
+  }));
 }

@@ -27,8 +27,29 @@
       </div>
     </div>
 
+    <!-- Strength is done in the logger, not measured against a distance. -->
+    <div v-if="session.isStrength" class="mt-2.5 flex items-center gap-3">
+      <NuxtLink
+        v-if="completion.logId"
+        :to="`/strength/log/${completion.logId}`"
+        class="rounded-lg bg-raised px-3 py-1.5 text-xs font-semibold text-accent-700"
+      >
+        {{ completion.state === "completed" ? "View session" : "Resume" }}
+      </NuxtLink>
+      <button
+        v-else-if="session.templateId"
+        type="button"
+        class="rounded-lg bg-accent-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+        :disabled="starting"
+        @click="start"
+      >
+        {{ starting ? "Starting…" : "Start" }}
+      </button>
+      <span v-if="startError" class="text-xs text-verdict-regress" role="alert">{{ startError }}</span>
+    </div>
+
     <!-- Planned vs actual, only once there's something to compare. -->
-    <div v-if="showProgress" class="mt-3">
+    <div v-else-if="showProgress" class="mt-3">
       <div class="flex items-baseline justify-between text-xs">
         <span class="tnum font-semibold text-ink">
           {{ formatDistance(completion.actualDistanceM) }}<span class="text-subtle"> / {{ targetLabel }}</span>
@@ -45,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 
 interface Completion {
   state: string;
@@ -66,7 +87,10 @@ export interface SessionRowData {
   changedBecause: string | null;
   targetDistanceM: number | null;
   targetDurationS: number | null;
-  completion: Completion;
+  completion: Completion & { logId?: string | null };
+  /** Strength work: started in the logger from a template, rather than run. */
+  isStrength?: boolean;
+  templateId?: string | null;
 }
 
 const props = withDefaults(
@@ -82,6 +106,27 @@ const props = withDefaults(
 );
 
 const completion = computed(() => props.session.completion);
+
+const starting = ref(false);
+const startError = ref<string | null>(null);
+
+// Starting from the plan links the new log to this planned session, so
+// finishing it is what completes it.
+async function start() {
+  starting.value = true;
+  startError.value = null;
+  try {
+    const { id } = await $fetch<{ id: string }>("/api/strength/logs", {
+      method: "POST",
+      body: { templateId: props.session.templateId, planSessionId: props.session.id },
+    });
+    await navigateTo(`/strength/log/${id}`);
+  } catch (e) {
+    startError.value = (e as { data?: { statusMessage?: string } })?.data?.statusMessage || "Couldn't start the session.";
+  } finally {
+    starting.value = false;
+  }
+}
 
 const STATE_BADGES: Record<string, { icon: string; class: string; title: string }> = {
   completed: { icon: "check", class: "bg-verdict-progress text-white", title: "Completed" },
