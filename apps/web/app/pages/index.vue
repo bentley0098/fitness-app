@@ -1,85 +1,101 @@
 <template>
-  <div class="space-y-4 p-4">
-    <header class="flex items-baseline justify-between">
-      <div>
-        <div class="text-xs text-subtle">{{ todayLabel }}</div>
-        <h1 class="text-xl font-bold text-ink">Today</h1>
-      </div>
-      <div class="flex items-center gap-3">
-        <button
-          type="button"
-          class="flex items-center gap-1 text-xs font-medium text-accent-700 disabled:opacity-60"
-          :disabled="syncing"
-          @click="syncNow"
-        >
-          <AppIcon name="refresh" :size="14" :class="syncing ? 'animate-spin' : ''" />
-          {{ syncing ? "Syncing…" : "Sync" }}
-        </button>
-        <NuxtLink to="/more/log" class="text-xs font-medium text-accent-700">Add note</NuxtLink>
-      </div>
-    </header>
-    <p
-      v-if="syncMessage"
-      class="-mt-2 text-right text-xs"
-      :class="syncFailed ? 'text-verdict-regress' : 'text-subtle'"
-      role="status"
-    >
-      {{ syncMessage }}
-    </p>
-
-    <ProposalBanner />
-
-    <AsyncState :pending="pending && !initial" :error="error" title="Couldn't load your week" :skeletons="3">
-      <template v-if="initial">
-        <WeekDayStrip :weeks="stripWeeks" :selected="selected" :today-date="todayDate" @select="selected = $event" @swipe="changeWeek" />
-
-        <section class="space-y-2">
-          <div class="flex items-center justify-between">
-            <SectionHeader :title="selected === todayDate ? 'Today\'s workouts' : formatDate(selected, DAY_FORMAT)" />
-            <button v-if="selected !== todayDate" type="button" class="text-xs font-medium text-accent-700" @click="goToday">
-              Today
-            </button>
+  <div>
+    <!-- The strip sits on its own panel; a grey wash fades out from its lower
+         edge down the page, behind the cards. -->
+    <div class="relative">
+      <div class="rounded-b-3xl border-b border-line bg-surface px-4 pb-3 pt-4 shadow-card">
+        <header class="mb-3 flex items-baseline justify-between">
+          <div>
+            <div class="text-xs text-subtle">{{ todayLabel }}</div>
+            <h1 class="text-xl font-bold text-ink">Today</h1>
           </div>
-
-          <div v-if="!selectedDay" class="h-20 animate-pulse rounded-card bg-raised" />
-
-          <template v-else>
-            <template v-if="hasSessions">
-              <DaySessionCard v-for="s in sessions" :key="s.id" :session="s" />
-            </template>
-
-            <div v-else class="rounded-card border border-line bg-surface p-4 shadow-card">
-              <div class="flex items-center gap-2 text-sm font-medium text-ink">
-                <AppIcon name="rest" :size="16" class="text-subtle" />
-                Rest day
-              </div>
-              <p v-if="nextUp" class="mt-1 text-xs text-subtle">
-                Next up {{ formatDate(nextUp.date, DAY_FORMAT) }} · {{ nextUp.label }}
-              </p>
-              <div v-if="selectedDay.activities.length" class="mt-2.5 space-y-1.5 border-t border-line pt-2.5">
-                <p class="text-[11px] font-medium uppercase tracking-wide text-subtle">Logged anyway</p>
-                <ActivityRow v-for="a in selectedDay.activities" :key="a.id" :activity="a" compact />
-              </div>
-            </div>
-
-            <!-- Work done on a planned day that no session claimed. -->
-            <NuxtLink
-              v-for="log in selectedDay.unplannedStrength"
-              :key="log.id"
-              :to="`/strength/log/${log.id}`"
-              class="flex items-center gap-1.5 text-xs text-muted"
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              class="flex items-center gap-1 text-xs font-medium text-accent-700 disabled:opacity-60"
+              :disabled="syncing"
+              @click="syncNow"
             >
-              <AppIcon name="dumbbell" :size="13" />
-              <span>{{ log.templateName }} · unplanned</span>
-            </NuxtLink>
-            <div v-if="hasSessions && selectedDay.unplanned.actualDistanceM > 0" class="flex items-center gap-1.5 text-xs text-muted">
-              <AppIcon name="run" :size="13" />
-              <span class="tnum">{{ formatDistance(selectedDay.unplanned.actualDistanceM) }} km unplanned</span>
+              <AppIcon name="refresh" :size="14" :class="syncing ? 'animate-spin' : ''" />
+              {{ syncing ? "Syncing…" : "Sync" }}
+            </button>
+            <NuxtLink to="/more/log" class="text-xs font-medium text-accent-700">Add note</NuxtLink>
+          </div>
+        </header>
+        <p
+          v-if="syncMessage"
+          class="-mt-1 mb-2 text-right text-xs"
+          :class="syncFailed ? 'text-verdict-regress' : 'text-subtle'"
+          role="status"
+        >
+          {{ syncMessage }}
+        </p>
+
+        <WeekDayStrip
+          v-if="initial"
+          :weeks="stripWeeks"
+          :selected="selected"
+          :today-date="todayDate"
+          @select="selected = $event"
+          @swipe="changeWeek"
+        />
+      </div>
+      <div class="pointer-events-none absolute inset-x-0 top-full h-72 bg-gradient-to-b from-raised to-canvas" aria-hidden="true" />
+    </div>
+
+    <div class="relative space-y-4 p-4">
+      <ProposalBanner />
+
+      <AsyncState :pending="pending && !initial" :error="error" title="Couldn't load your week" :skeletons="3">
+        <template v-if="initial">
+          <section class="space-y-2">
+            <div class="flex items-center justify-between">
+              <SectionHeader :title="selected === todayDate ? 'Today\'s workouts' : formatDate(selected, DAY_FORMAT)" />
+              <button v-if="selected !== todayDate" type="button" class="text-xs font-medium text-accent-700" @click="goToday">
+                Today
+              </button>
             </div>
-          </template>
-        </section>
-      </template>
-    </AsyncState>
+
+            <div v-if="!selectedDay" class="h-20 animate-pulse rounded-card bg-raised" />
+
+            <template v-else>
+              <template v-if="hasSessions">
+                <DaySessionCard v-for="s in sessions" :key="s.id" :session="s" />
+              </template>
+
+              <div v-else class="rounded-card border border-line bg-surface p-4 shadow-card">
+                <div class="flex items-center gap-2 text-sm font-medium text-ink">
+                  <AppIcon name="rest" :size="16" class="text-subtle" />
+                  Rest day
+                </div>
+                <p v-if="nextUp" class="mt-1 text-xs text-subtle">
+                  Next up {{ formatDate(nextUp.date, DAY_FORMAT) }} · {{ nextUp.label }}
+                </p>
+                <div v-if="selectedDay.activities.length" class="mt-2.5 space-y-1.5 border-t border-line pt-2.5">
+                  <p class="text-[11px] font-medium uppercase tracking-wide text-subtle">Logged anyway</p>
+                  <ActivityRow v-for="a in selectedDay.activities" :key="a.id" :activity="a" compact />
+                </div>
+              </div>
+
+              <!-- Work done on a planned day that no session claimed. -->
+              <NuxtLink
+                v-for="log in selectedDay.unplannedStrength"
+                :key="log.id"
+                :to="`/strength/log/${log.id}`"
+                class="flex items-center gap-1.5 text-xs text-muted"
+              >
+                <AppIcon name="dumbbell" :size="13" />
+                <span>{{ log.templateName }} · unplanned</span>
+              </NuxtLink>
+              <div v-if="hasSessions && selectedDay.unplanned.actualDistanceM > 0" class="flex items-center gap-1.5 text-xs text-muted">
+                <AppIcon name="run" :size="13" />
+                <span class="tnum">{{ formatDistance(selectedDay.unplanned.actualDistanceM) }} km unplanned</span>
+              </div>
+            </template>
+          </section>
+        </template>
+      </AsyncState>
+    </div>
   </div>
 </template>
 
