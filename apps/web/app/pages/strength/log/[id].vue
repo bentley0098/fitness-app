@@ -62,6 +62,7 @@
                 @add-set="structure(exercise, 'add-set')"
                 @remove-set="structure(exercise, 'remove-set')"
                 @swap="swapping = swapping === exercise.logExerciseId ? null : exercise.logExerciseId"
+                @skip="skip(exercise)"
               />
             </section>
           </template>
@@ -85,6 +86,7 @@
                 @add-set="structure(exercise, 'add-set')"
                 @remove-set="structure(exercise, 'remove-set')"
                 @swap="swapping = swapping === exercise.logExerciseId ? null : exercise.logExerciseId"
+                @skip="skip(exercise)"
               />
             </div>
             <ul class="mt-3 space-y-2 border-t border-line pt-3">
@@ -233,6 +235,17 @@ function structure(exercise: Exercise, action: "add-set" | "remove-set") {
   return change(
     () => $fetch(`/api/strength/logs/${id}/exercises/${exercise.logExerciseId}/${action}`, { method: "POST" }),
     "Couldn't change the sets.",
+  );
+}
+
+// Drops the exercise from this session. Anything already logged on it goes too,
+// so ask first in that case.
+async function skip(exercise: Exercise) {
+  const logged = exercise.rows.filter((r) => r.logged).length;
+  if (logged && !window.confirm(`Skip ${exercise.name}? The ${logged} set${logged === 1 ? "" : "s"} you logged will be discarded.`)) return;
+  await change(
+    () => $fetch(`/api/strength/logs/${id}/exercises/${exercise.logExerciseId}`, { method: "DELETE" }),
+    "Couldn't skip that exercise.",
   );
 }
 

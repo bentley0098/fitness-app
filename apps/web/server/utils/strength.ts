@@ -70,6 +70,18 @@ export function groupSlots(slots: TemplateSlot[]): SlotGroup[] {
   return groups;
 }
 
+/**
+ * After exercises are dropped from a session: the slots left alone in a
+ * superset. A superset of one is just an exercise, so they lose the group.
+ */
+export function orphanedSupersetIds(slots: { id: string; supersetGroup: number | null }[]): string[] {
+  const members = new Map<number, string[]>();
+  for (const s of slots) {
+    if (s.supersetGroup != null) members.set(s.supersetGroup, [...(members.get(s.supersetGroup) ?? []), s.id]);
+  }
+  return [...members.values()].filter((ids) => ids.length === 1).map((ids) => ids[0]!);
+}
+
 /** The first problem with a template's slots, or null when they are fine. */
 export function validateSlots(slots: TemplateSlot[], exercises: Pick<Exercise, "id" | "name" | "measure">[]): string | null {
   const byId = new Map(exercises.map((e) => [e.id, e]));

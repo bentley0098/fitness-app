@@ -424,6 +424,31 @@ export async function addLogExercise(logId: string, choice: ExerciseChoice): Pro
   if (insErr) throw new Error(`Add exercise failed: ${insErr.message}`);
 }
 
+/**
+ * Skips an exercise: drops it from this session, with anything logged against
+ * it. The template is untouched. A superset left with one exercise stops being one.
+ */
+export async function removeLogExercise(logId: string, entryId: string): Promise<void> {
+  await requireInProgress(logId);
+  const entry = await loadEntry(logId, entryId);
+
+  const { error } = await db.from("strength_log_exercises").delete().eq("id", entryId);
+  if (error) throw new Error(`Skip exercise failed: ${error.message}`);
+
+  if (entry.superset_group == null) return;
+  const { data: rest, error: restErr } = await db
+    .from("strength_log_exercises")
+    .select("id, superset_group")
+    .eq("log_id", logId);
+  if (restErr) throw new Error(`Skip exercise failed: ${restErr.message}`);
+
+  const orphans = orphanedSupersetIds((rest ?? []).map((r) => ({ id: r.id, supersetGroup: r.superset_group ?? null })));
+  if (orphans.length) {
+    const { error: upErr } = await db.from("strength_log_exercises").update({ superset_group: null }).in("id", orphans);
+    if (upErr) throw new Error(`Skip exercise failed: ${upErr.message}`);
+  }
+}
+
 export async function addSet(logId: string, entryId: string): Promise<void> {
   await requireInProgress(logId);
   const entry = await loadEntry(logId, entryId);

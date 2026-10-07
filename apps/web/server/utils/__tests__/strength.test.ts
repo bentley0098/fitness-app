@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_REST_SECONDS, buildRows, linksToSupersetGroups, supersetGroupsToLinks, exerciseSeries, summariseSession, exerciseKey, latestPerExercise, planGroupSets, restForRound, retarget, findExercise, groupSlots, previousSession, targetLabel, validateSlots, type Exercise, type TemplateSlot } from "../strength";
+import { DEFAULT_REST_SECONDS, buildRows, linksToSupersetGroups, supersetGroupsToLinks, exerciseSeries, summariseSession, exerciseKey, latestPerExercise, planGroupSets, restForRound, retarget, findExercise, groupSlots, orphanedSupersetIds, previousSession, targetLabel, validateSlots, type Exercise, type TemplateSlot } from "../strength";
 import { SEED_EXERCISES, SEED_TEMPLATES, planSeed } from "../strengthSeed";
 
 function exercise(over: Partial<Exercise> & { id: string; name: string }): Exercise {
@@ -385,5 +385,21 @@ describe("superset links", () => {
     const links = [true, false, false, true, true, false];
 
     expect(supersetGroupsToLinks(linksToSupersetGroups(links))).toEqual(links);
+  });
+});
+
+describe("orphanedSupersetIds", () => {
+  it("frees an exercise left alone in its superset", () => {
+    const slots = [
+      { id: "a", supersetGroup: 1 },
+      { id: "b", supersetGroup: null },
+      { id: "c", supersetGroup: 2 },
+      { id: "d", supersetGroup: 2 },
+    ];
+    expect(orphanedSupersetIds(slots)).toEqual(["a"]);
+  });
+
+  it("leaves intact supersets and plain exercises alone", () => {
+    expect(orphanedSupersetIds([{ id: "a", supersetGroup: 1 }, { id: "b", supersetGroup: 1 }, { id: "c", supersetGroup: null }])).toEqual([]);
   });
 });
