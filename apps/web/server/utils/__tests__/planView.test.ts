@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../db", () => ({ db: {} }));
 
-const { buildPlannedSession } = await import("../planView");
+const { buildPlannedSession, buildWeek } = await import("../planView");
 
 const session = (id: string, date: string, type: string, prescription: Record<string, unknown>) => ({
   id,
@@ -41,5 +41,18 @@ describe("buildPlannedSession", () => {
 
   it("returns null for an unknown id", () => {
     expect(buildPlannedSession(snapshot as any, "nope")).toBeNull();
+  });
+});
+
+describe("buildWeek", () => {
+  it("reports the first session after the week for a rest day's Next up", () => {
+    const later = { ...snapshot, sessions: [...snapshot.sessions, session("run2", "2026-09-30", "long_run", { distanceKm: 12 })] };
+    expect(buildWeek(later as any, "2026-09-22").nextAfterWeek).toEqual({ date: "2026-09-30", label: "Long run" });
+    expect(buildWeek(snapshot as any, "2026-09-22").nextAfterWeek).toBeNull();
+  });
+
+  it("names each session's type", () => {
+    const day = buildWeek(snapshot as any, "2026-09-22").days.find((d) => d.date === "2026-09-22")!;
+    expect(day.sessions.map((s) => s.typeLabel)).toEqual(["Easy run", "Gym"]);
   });
 });

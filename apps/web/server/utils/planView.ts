@@ -67,12 +67,18 @@ function toSessionDto(s: DaySession) {
     revision: s.revision ?? 1,
     changedBecause: s.changed_because ?? null,
     label: s.label,
+    typeLabel: typeLabel(s.type),
     targetDistanceM: s.targetDistanceM,
     targetDurationS: s.targetDurationS,
     completion: s.completion,
     isStrength: isStrengthType(s.type),
     templateId: typeof s.prescription?.templateId === "string" ? s.prescription.templateId : null,
   };
+}
+
+function nextSessionAfter(sessions: SessionLike[], afterIso: string) {
+  const next = sessions.find((s) => s.date > afterIso);
+  return next ? { date: next.date, label: typeLabel(next.type) } : null;
 }
 
 /** One planned session with its derived completion, or null when the id is unknown. */
@@ -87,7 +93,6 @@ export function buildPlannedSession(snapshot: PlanSnapshot, id: string) {
 
   return {
     ...toSessionDto(session),
-    typeLabel: typeLabel(session.type),
     weekStart: mondayOf(row.date),
   };
 }
@@ -111,6 +116,8 @@ export function buildWeek(snapshot: PlanSnapshot, anyDateInWeek: string) {
       phase: phaseForWeek(snapshot.sessions, dates),
       ...totals,
     },
+    // First session after this week, for a rest day's "Next up".
+    nextAfterWeek: nextSessionAfter(snapshot.sessions, weekEndForStart(startIso)),
     nav: {
       prevWeekStart: startIso > FIRST_WEEK_START ? weekStartForNumber(number - 1) : null,
       nextWeekStart: startIso < LAST_WEEK_START ? weekStartForNumber(number + 1) : null,

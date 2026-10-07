@@ -29,132 +29,54 @@
 
     <ProposalBanner />
 
-    <AsyncState :pending="pending" :error="error" title="Couldn't load your dashboard" :skeletons="4">
-      <template v-if="data">
-        <RaceCountdown :race="data.race" :phase="data.week.phase" />
+    <AsyncState :pending="pending" :error="error" title="Couldn't load your week" :skeletons="3">
+      <template v-if="data && selectedDay">
+        <WeekDayStrip :days="data.days" :selected="selected" @select="selected = $event" />
 
-        <AdaptationBanner :verdict="data.verdict" :reason="data.reason" :signals="data.signals" />
-
-        <!-- Today's session -->
         <section class="space-y-2">
-          <SectionHeader title="Today's session" />
-          <SessionCard
-            v-if="data.today.sessions.length || data.today.unplannedStrength.length"
-            :date="data.asOfDate"
-            :is-today="true"
-            :sessions="data.today.sessions"
-            :unplanned="data.today.unplanned"
-            :unplanned-strength="data.today.unplannedStrength"
-          />
+          <div class="flex items-center justify-between">
+            <SectionHeader :title="selectedDay.isToday ? 'Today\'s workouts' : formatDate(selectedDay.date, DAY_FORMAT)" />
+            <button
+              v-if="!selectedDay.isToday"
+              type="button"
+              class="text-xs font-medium text-accent-700"
+              @click="selected = todayDate"
+            >
+              Today
+            </button>
+          </div>
+
+          <template v-if="hasSessions">
+            <DaySessionCard v-for="s in sessions" :key="s.id" :session="s" />
+          </template>
+
           <div v-else class="rounded-card border border-line bg-surface p-4 shadow-card">
             <div class="flex items-center gap-2 text-sm font-medium text-ink">
               <AppIcon name="rest" :size="16" class="text-subtle" />
               Rest day
             </div>
-            <p v-if="data.nextSession" class="mt-1 text-xs text-subtle">
-              Next up {{ formatDate(data.nextSession.date, { weekday: "long", day: "numeric", month: "short" }) }}
+            <p v-if="nextUp" class="mt-1 text-xs text-subtle">
+              Next up {{ formatDate(nextUp.date, DAY_FORMAT) }} · {{ nextUp.label }}
             </p>
-            <div v-if="data.today.activities.length" class="mt-2.5 space-y-1.5 border-t border-line pt-2.5">
-              <p class="text-[11px] font-medium uppercase tracking-wide text-subtle">Logged today anyway</p>
-              <ActivityRow v-for="a in data.today.activities" :key="a.id" :activity="a" compact />
+            <div v-if="selectedDay.activities.length" class="mt-2.5 space-y-1.5 border-t border-line pt-2.5">
+              <p class="text-[11px] font-medium uppercase tracking-wide text-subtle">Logged anyway</p>
+              <ActivityRow v-for="a in selectedDay.activities" :key="a.id" :activity="a" compact />
             </div>
           </div>
-        </section>
 
-        <!-- This week -->
-        <section class="space-y-2">
-          <SectionHeader title="This week" :sub="`Week ${data.week.number} of ${data.race.totalWeeks}`">
-            <template #action>
-              <NuxtLink to="/plan" class="text-xs font-medium text-accent-700">Full plan →</NuxtLink>
-            </template>
-          </SectionHeader>
-
-          <div class="rounded-card border border-line bg-surface p-4 shadow-card">
-            <WeeklyVolumeChart :weeks="data.weeklyVolume" />
-          </div>
-        </section>
-
-        <!-- Garmin stats -->
-        <section class="space-y-2">
-          <SectionHeader title="Latest from Garmin" :sub="lastSyncLabel" />
-
-          <div class="grid grid-cols-2 gap-2">
-            <MetricTile
-              label="Training load"
-              icon="gauge"
-              :value="loadValue"
-              :sub="loadSub"
-            />
-            <MetricTile
-              label="VO2 max"
-              icon="trend"
-              :value="formatNumber(data.vo2Max.current, 1)"
-              :trend="data.vo2Max.delta30d"
-              trend-good="up"
-              :sub="data.vo2Max.current == null ? 'No qualifying run yet' : '30-day change'"
-            />
-            <MetricTile
-              label="Resting HR"
-              icon="heart"
-              :value="formatNumber(metrics?.restingHr)"
-              unit="bpm"
-              :trend="data.today.restingHrDelta28d"
-              trend-good="down"
-              sub="vs 28-day avg"
-            >
-              <div class="mt-2"><Sparkline :points="data.sparklines.restingHr" variant="danger" /></div>
-            </MetricTile>
-            <MetricTile
-              label="HRV"
-              icon="trend"
-              :value="metrics?.hrvStatus ? humanizePhase(metrics.hrvStatus) : null"
-              :sub="metrics?.hrvLastNightAvg != null ? `${formatNumber(metrics.hrvLastNightAvg)} ms last night` : undefined"
-            />
-            <SleepCard :sleep="metrics?.sleep ?? null" />
-            <MetricTile
-              label="Body battery"
-              icon="battery"
-              :value="formatNumber(metrics?.bodyBatteryMax)"
-              :sub="metrics?.bodyBatteryMin != null ? `low of ${formatNumber(metrics.bodyBatteryMin)}` : undefined"
-            >
-              <div class="mt-2"><Sparkline :points="data.sparklines.bodyBattery" /></div>
-            </MetricTile>
-          </div>
-
-          <div
-            v-if="data.signals.lowBodyBatteryToday"
-            class="rounded-card border border-line bg-raised p-3 text-xs text-muted"
+          <!-- Work done on a planned day that no session claimed. -->
+          <NuxtLink
+            v-for="log in selectedDay.unplannedStrength"
+            :key="log.id"
+            :to="`/strength/log/${log.id}`"
+            class="flex items-center gap-1.5 text-xs text-muted"
           >
-            Body battery is low today — a same-day caution, not a change to the plan. Consider an easier session if
-            you have the flexibility.
-          </div>
-        </section>
-
-        <!-- Race predictions -->
-        <section v-if="data.racePredictions" class="space-y-2">
-          <SectionHeader
-            title="Race predictions"
-            :sub="`Garmin · ${formatDate(data.racePredictions.date, { day: 'numeric', month: 'short' })}`"
-          />
-          <RacePredictionsCard :predictions="data.racePredictions" />
-        </section>
-
-        <!-- Recent activity -->
-        <section v-if="data.recentActivities.length" class="space-y-2">
-          <SectionHeader title="Recent runs">
-            <template #action>
-              <NuxtLink to="/activity" class="text-xs font-medium text-accent-700">All →</NuxtLink>
-            </template>
-          </SectionHeader>
-          <div class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-card">
-            <NuxtLink
-              v-for="a in data.recentActivities"
-              :key="a.id"
-              :to="`/activity/${a.id}`"
-              class="block p-3 transition-colors hover:bg-raised"
-            >
-              <ActivityRow :activity="a" />
-            </NuxtLink>
+            <AppIcon name="dumbbell" :size="13" />
+            <span>{{ log.templateName }} · unplanned</span>
+          </NuxtLink>
+          <div v-if="hasSessions && selectedDay.unplanned.actualDistanceM > 0" class="flex items-center gap-1.5 text-xs text-muted">
+            <AppIcon name="run" :size="13" />
+            <span class="tnum">{{ formatDistance(selectedDay.unplanned.actualDistanceM) }} km unplanned</span>
           </div>
         </section>
       </template>
@@ -164,8 +86,28 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { runsFirst } from "~/composables/sessionKind";
 
-const { data, pending, error, refresh } = await useFetch("/api/dashboard");
+const DAY_FORMAT: Intl.DateTimeFormatOptions = { weekday: "long", day: "numeric", month: "short" };
+
+const { data, pending, error, refresh } = await useFetch("/api/plan-sessions");
+
+const todayDate = computed(() => data.value?.days.find((d) => d.isToday)?.date ?? data.value?.days[0]?.date ?? "");
+const selected = ref(todayDate.value);
+
+const selectedDay = computed(() => data.value?.days.find((d) => d.date === selected.value) ?? null);
+const sessions = computed(() => runsFirst(selectedDay.value?.sessions ?? []));
+const hasSessions = computed(() => sessions.value.length > 0);
+
+// The next planned day after the one on screen: this week first, then the
+// first session of a later week.
+const nextUp = computed(() => {
+  const day = selectedDay.value;
+  if (!day || !data.value) return null;
+  const later = data.value.days.find((d) => d.date > day.date && d.sessions.length);
+  if (later) return { date: later.date, label: runsFirst(later.sessions)[0]!.typeLabel };
+  return data.value.nextAfterWeek;
+});
 
 const syncing = ref(false);
 const syncMessage = ref("");
@@ -196,30 +138,5 @@ const todayLabel = new Date().toLocaleDateString(undefined, {
   weekday: "long",
   day: "numeric",
   month: "long",
-});
-
-const metrics = computed(() => data.value?.today.metrics ?? null);
-
-// Garmin's own Training Load isn't reachable through the Node SDK, so this is
-// the engine's acute:chronic ratio — labelled honestly rather than dressed up
-// as the vendor metric.
-const loadValue = computed(() => {
-  const l = data.value?.load;
-  if (!l) return null;
-  if (l.unbounded) return "High";
-  if (l.insufficientHistory) return DASH;
-  return formatNumber(l.ratio, 2);
-});
-
-const loadSub = computed(() => {
-  const l = data.value?.load;
-  if (!l) return undefined;
-  if (l.insufficientHistory) return `Building baseline · ${l.historyDays}/${l.minHistoryDays} days`;
-  return `Sweet spot ${l.sweetSpotMin}–${l.sweetSpotMax}`;
-});
-
-const lastSyncLabel = computed(() => {
-  const d = data.value?.lastActivityAt;
-  return d ? `Last activity ${formatDate(d, { day: "numeric", month: "short" })}` : undefined;
 });
 </script>

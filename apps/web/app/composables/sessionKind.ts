@@ -32,6 +32,15 @@ export const KIND_BAR: Record<SessionKind, string> = {
   workout: "bg-kind-workout",
 };
 
+/** Outline version of the bar colour, for a session still ahead. */
+export const KIND_BORDER: Record<SessionKind, string> = {
+  easy: "border-kind-easy",
+  gym: "border-kind-gym",
+  physio: "border-kind-physio",
+  long: "border-kind-long",
+  workout: "border-kind-workout",
+};
+
 const isStrength = (type: string | null) => sessionKind(type) === "gym" || sessionKind(type) === "physio";
 
 /** Stable sort: runs first, strength after, otherwise original order. */
