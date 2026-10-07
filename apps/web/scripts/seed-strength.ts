@@ -11,7 +11,7 @@
 // edited or logged stays.
 //
 // Run with: npm run strength:seed
-import { db } from "../server/utils/db";
+import { db, withJwtRetry } from "../server/utils/db";
 import { isoDate } from "../server/utils/dates";
 import { RACE_DATE, mondayOf } from "../server/utils/planMeta";
 import { isStrengthType } from "../server/utils/planLabels";
@@ -21,8 +21,8 @@ import { SEED_MARKER, diffSchedule, planStrengthSchedule } from "../server/utils
 
 async function main() {
   const [{ data: existingExercises, error: exErr }, { data: existingTemplates, error: tErr }] = await Promise.all([
-    db.from("exercises").select("id, name"),
-    db.from("strength_templates").select("id, name"),
+    withJwtRetry(() => db.from("exercises").select("id, name")),
+    withJwtRetry(() => db.from("strength_templates").select("id, name")),
   ]);
   if (exErr) throw new Error(`Load exercises failed: ${exErr.message}`);
   if (tErr) throw new Error(`Load templates failed: ${tErr.message}`);
@@ -33,7 +33,7 @@ async function main() {
   );
 
   if (plan.exercises.length > 0) {
-    const { error } = await db.from("exercises").insert(
+    const { error } = await withJwtRetry(() => db.from("exercises").insert(
       plan.exercises.map((e) => ({
         name: e.name,
         name_key: exerciseKey(e.name),
@@ -42,24 +42,24 @@ async function main() {
         note: e.note,
         rest_seconds: e.restSeconds,
       })),
-    );
+    ));
     if (error) throw new Error(`Insert exercises failed: ${error.message}`);
   }
 
   // Re-read so templates can point at exercises that were already there too.
-  const { data: library, error: libErr } = await db.from("exercises").select("id, name");
+  const { data: library, error: libErr } = await withJwtRetry(() => db.from("exercises").select("id, name"));
   if (libErr) throw new Error(`Load exercises failed: ${libErr.message}`);
   const idByKey = new Map((library ?? []).map((e) => [exerciseKey(e.name), e.id as string]));
 
   for (const template of plan.templates) {
-    const { data: created, error } = await db
+    const { data: created, error } = await withJwtRetry(() => db
       .from("strength_templates")
       .insert({ name: template.name, name_key: exerciseKey(template.name), kind: template.kind })
       .select("id")
-      .single();
+      .single());
     if (error) throw new Error(`Insert template ${template.name} failed: ${error.message}`);
 
-    const { error: slotErr } = await db.from("strength_template_slots").insert(
+    const { error: slotErr } = await withJwtRetry(() => db.from("strength_template_slots").insert(
       template.slots.map((s, position) => ({
         template_id: created.id,
         position,
@@ -72,10 +72,10 @@ async function main() {
         superset_group: s.supersetGroup,
         note: s.note,
       })),
-    );
+    ));
     if (slotErr) {
       // No transactions on this client: don't leave a half-built template behind.
-      await db.from("strength_templates").delete().eq("id", created.id);
+      await withJwtRetry(() => db.from("strength_templates").delete().eq("id", created.id));
       throw new Error(`Insert slots for ${template.name} failed: ${slotErr.message}`);
     }
   }
@@ -89,9 +89,9 @@ async function schedule() {
   const today = isoDate(new Date());
 
   const [{ data: templates, error: tErr }, { data: sessions, error: sErr }, { data: logs, error: lErr }] = await Promise.all([
-    db.from("strength_templates").select("id, name"),
-    db.from("plan_sessions").select("id, date, phase, type, prescription, revision"),
-    db.from("strength_logs").select("plan_session_id").not("plan_session_id", "is", null),
+    withJwtRetry(() => db.from("strength_templates").select("id, name")),
+    withJwtRetry(() => db.from("plan_sessions").select("id, date, phase, type, prescription, revision")),
+    withJwtRetry(() => db.from("strength_logs").select("plan_session_id").not("plan_session_id", "is", null)),
   ]);
   if (tErr) throw new Error(`Load templates failed: ${tErr.message}`);
   if (sErr) throw new Error(`Load plan failed: ${sErr.message}`);
@@ -127,11 +127,11 @@ async function schedule() {
   const diff = diffSchedule(desired, seeded, templateIdOf, today);
 
   if (diff.deleteIds.length > 0) {
-    const { error } = await db.from("plan_sessions").delete().in("id", diff.deleteIds);
+    const { error } = await withJwtRetry(() => db.from("plan_sessions").delete().in("id", diff.deleteIds));
     if (error) throw new Error(`Remove old strength sessions failed: ${error.message}`);
   }
   if (diff.insert.length > 0) {
-    const { error } = await db.from("plan_sessions").insert(
+    const { error } = await withJwtRetry(() => db.from("plan_sessions").insert(
       diff.insert.map((d) => ({
         date: d.date,
         phase: d.phase,
@@ -141,7 +141,7 @@ async function schedule() {
         status: "planned",
         revision: 1,
       })),
-    );
+    ));
     if (error) throw new Error(`Schedule strength sessions failed: ${error.message}`);
   }
 
