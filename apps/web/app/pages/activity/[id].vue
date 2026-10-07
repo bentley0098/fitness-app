@@ -9,7 +9,7 @@
     <AsyncState :pending="pending" :error="error" title="Couldn't load this activity" :skeletons="4">
       <!-- A session that hasn't produced an activity: what the plan asks for. -->
       <template v-if="planned && plannedData">
-        <div class="rounded-card bg-ink p-4 text-white">
+        <div class="rounded-card bg-hero p-4 text-white">
           <div class="text-[11px] uppercase tracking-wide text-white/60">
             {{ plannedData.typeLabel }} · {{ formatDate(plannedData.date) }}
           </div>
@@ -85,7 +85,7 @@
       </template>
 
       <template v-else-if="data">
-        <div class="rounded-card bg-ink p-4 text-white">
+        <div class="rounded-card bg-hero p-4 text-white">
           <div class="text-[11px] uppercase tracking-wide text-white/60">
             {{ humanizeType(data.activityType) }} · {{ formatDate(data.date) }}
           </div>

@@ -110,7 +110,7 @@ const completion = computed(() => props.session.completion);
 const { starting, startError, start } = useStartSession(() => props.session);
 
 const STATE_BADGES: Record<string, { icon: string; class: string; title: string }> = {
-  completed: { icon: "check", class: "bg-verdict-progress text-white", title: "Completed" },
+  completed: { icon: "check", class: "bg-verdict-progress text-on-solid", title: "Completed" },
   partial: { icon: "check", class: "bg-verdict-hold-soft text-verdict-hold", title: "Partially completed" },
   missed: { icon: "alert", class: "bg-verdict-regress-soft text-verdict-regress", title: "Missed" },
   today: { icon: "clock", class: "bg-accent-100 text-accent-700", title: "Due today" },

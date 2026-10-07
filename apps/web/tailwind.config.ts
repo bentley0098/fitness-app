@@ -20,6 +20,8 @@ export default {
         canvas: v("--c-canvas"),
         surface: v("--c-surface"),
         raised: v("--c-raised"),
+        hero: v("--c-hero"),
+        "on-solid": v("--c-on-solid"),
         line: v("--c-line"),
         "line-strong": v("--c-line-strong"),
         ink: v("--c-ink"),

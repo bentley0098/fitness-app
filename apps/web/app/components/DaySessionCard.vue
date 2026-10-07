@@ -12,7 +12,7 @@
         </div>
         <span
           v-if="session.completion.state === 'completed'"
-          class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-pill bg-verdict-progress text-white"
+          class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-pill bg-verdict-progress text-on-solid"
           title="Completed"
         >
           <AppIcon name="check" :size="13" :stroke-width="2.5" />
