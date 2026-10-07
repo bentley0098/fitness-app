@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../db", () => ({ db: {} }));
 
-const { buildPlannedSession, buildWeek } = await import("../planView");
+const { buildOverview, buildPlannedSession, buildWeek } = await import("../planView");
 
 const session = (id: string, date: string, type: string, prescription: Record<string, unknown>) => ({
   id,
@@ -54,5 +54,11 @@ describe("buildWeek", () => {
   it("names each session's type", () => {
     const day = buildWeek(snapshot as any, "2026-09-22").days.find((d) => d.date === "2026-09-22")!;
     expect(day.sessions.map((s) => s.typeLabel)).toEqual(["Easy run", "Gym"]);
+  });
+});
+
+describe("buildOverview", () => {
+  it("reports today so the page can mark the right day", () => {
+    expect(buildOverview(snapshot as any).today).toBe("2026-09-20");
   });
 });

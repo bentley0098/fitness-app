@@ -16,7 +16,7 @@
           :key="w.number"
           :to="{ path: '/plan/week', query: { week: w.startDate } }"
           class="block rounded-card border bg-surface p-4 shadow-card transition-colors hover:bg-raised"
-          :class="w.status === 'current' ? 'border-accent-600' : 'border-line'"
+          :class="[w.status === 'current' ? 'border-accent-600' : 'border-line', w.status === 'done' ? 'opacity-40' : '']"
         >
           <div class="flex items-center justify-between gap-3">
             <div class="text-[11px] font-semibold uppercase tracking-wide text-subtle">
@@ -33,7 +33,10 @@
           </div>
 
           <div v-for="day in daysOf(w.sessions)" :key="day.date" class="mt-1.5 flex items-start gap-3 text-sm first:mt-3">
-            <span class="w-9 shrink-0" :class="day.sessions.every((s) => s.state === 'completed') ? 'text-verdict-progress' : 'text-subtle'">{{ weekdayShort(day.date) }}</span>
+            <span
+              class="w-9 shrink-0"
+              :class="day.date === data.today ? 'font-bold text-accent-700' : 'text-subtle'"
+            >{{ weekdayShort(day.date) }}</span>
             <ul class="min-w-0 flex-1 space-y-1.5">
               <li v-for="s in day.sessions" :key="s.id" class="flex items-stretch gap-2" :class="s.state === 'completed' ? 'opacity-50' : ''">
                 <span class="w-1 shrink-0 rounded-pill" :class="KIND_BAR[sessionKind(s.type)]" />

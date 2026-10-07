@@ -189,6 +189,7 @@ export function buildOverview(snapshot: PlanSnapshot) {
   return {
     race: raceInfo(snapshot.today),
     totalWeeks: TOTAL_WEEKS,
+    today: snapshot.today,
     currentWeekNumber,
     maxPlannedDistanceM,
     weeks,
