@@ -32,12 +32,15 @@
             </div>
           </div>
 
-          <ul class="mt-3 space-y-1.5">
-            <li v-for="s in w.sessions" :key="s.id" class="flex items-baseline gap-3 text-sm">
-              <span class="w-9 shrink-0" :class="s.state === 'completed' ? 'text-verdict-progress' : 'text-subtle'">{{ weekdayShort(s.date) }}</span>
-              <span class="min-w-0 flex-1" :class="s.state === 'completed' ? DONE : 'text-ink'">{{ s.label }}</span>
-            </li>
-          </ul>
+          <div v-for="day in daysOf(w.sessions)" :key="day.date" class="mt-1.5 flex items-start gap-3 text-sm first:mt-3">
+            <span class="w-9 shrink-0" :class="day.sessions.every((s) => s.state === 'completed') ? 'text-verdict-progress' : 'text-subtle'">{{ weekdayShort(day.date) }}</span>
+            <ul class="min-w-0 flex-1 space-y-1.5">
+              <li v-for="s in day.sessions" :key="s.id" class="flex items-stretch gap-2">
+                <span class="w-1 shrink-0 rounded-pill" :class="KIND_BAR[sessionKind(s.type)]" />
+                <span class="min-w-0 flex-1" :class="s.state === 'completed' ? DONE : 'text-ink'">{{ labelFor(s) }}</span>
+              </li>
+            </ul>
+          </div>
         </NuxtLink>
       </template>
     </AsyncState>
@@ -46,6 +49,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
+import { KIND_BAR, runsFirst, sessionKind } from "~/composables/sessionKind";
 
 const DONE = "text-verdict-progress line-through opacity-70";
 const SHORT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" };
@@ -53,6 +57,21 @@ const SHORT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" };
 const { data, pending, error } = await useFetch("/api/plan-sessions", {
   query: { view: "overview" },
 });
+
+// One entry per day, in date order, with that day's runs ahead of its strength work.
+function daysOf<T extends { date: string; type: string | null }>(sessions: T[]) {
+  const byDate = new Map<string, T[]>();
+  for (const s of sessions) byDate.set(s.date, [...(byDate.get(s.date) ?? []), s]);
+  return [...byDate].sort(([a], [b]) => a.localeCompare(b)).map(([date, list]) => ({ date, sessions: runsFirst(list) }));
+}
+
+// Strength sessions are named after their template ("Gym A", "Physio: ankle");
+// the overview only needs the kind.
+function labelFor(s: { type: string | null; label: string }) {
+  if (s.type === "strength_gym") return "Gym";
+  if (s.type === "strength_physio") return "Physio";
+  return s.label;
+}
 
 const currentPhase = computed(
   () => data.value?.weeks.find((w) => w.number === data.value?.currentWeekNumber)?.phase ?? null,

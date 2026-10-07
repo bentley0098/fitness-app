@@ -34,6 +34,13 @@ export default {
           700: v("--c-accent-700"),
           DEFAULT: v("--c-accent-600"),
         },
+        kind: {
+          easy: v("--c-kind-easy"),
+          gym: v("--c-kind-gym"),
+          physio: v("--c-kind-physio"),
+          long: v("--c-kind-long"),
+          workout: v("--c-kind-workout"),
+        },
         verdict: {
           progress: v("--c-progress"),
           "progress-soft": v("--c-progress-soft"),

@@ -43,6 +43,13 @@
   --c-regress-soft: 255 237 213;
   --c-stop: 185 28 28;
   --c-stop-soft: 254 226 226;
+
+  /* session kind bars on the plan page */
+  --c-kind-easy: 34 197 94;
+  --c-kind-gym: 239 68 68;
+  --c-kind-physio: 234 179 8;
+  --c-kind-long: 168 85 247;
+  --c-kind-workout: 249 115 22;
 }
 
 html {
