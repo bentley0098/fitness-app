@@ -2,11 +2,18 @@ import { db } from "./db";
 import { isoDate } from "./dates";
 import {
   buildRows,
+  exerciseKey,
+  findExercise,
   groupSlots,
   latestPerExercise,
+  planGroupSets,
+  restForRound,
+  retarget,
   targetLabel,
   type Exercise,
   type Kind,
+  type Measure,
+  type PlannedSet,
   type LogRow,
   type LoggedSet,
   type TemplateSlot,
@@ -176,6 +183,8 @@ export interface LogView {
   status: "in_progress" | "finished";
   groups: {
     superset: boolean;
+    /** The order the group's sets are done in, and the rest to take after each. */
+    sequence: (PlannedSet & { restSeconds: number })[];
     exercises: {
       logExerciseId: string;
       exerciseId: string;
@@ -218,9 +227,8 @@ export async function viewLog(id: string): Promise<LogView> {
     templateName: log.template_name,
     planSessionId: log.plan_session_id ?? null,
     status: log.status === "finished" ? "finished" : "in_progress",
-    groups: groupSlots(slots).map((group) => ({
-      superset: group.superset,
-      exercises: group.slots.map((slot) => {
+    groups: groupSlots(slots).map((group) => {
+      const exercises = group.slots.map((slot) => {
         const exercise = byId.get(slot.exerciseId);
         if (!exercise) throw new Error(`Session uses an unknown exercise (${slot.exerciseId}).`);
         const logged = (setRows ?? [])
@@ -237,8 +245,18 @@ export async function viewLog(id: string): Promise<LogView> {
           target: targetLabel(slot, exercise),
           rows: buildRows(slot, exercise.measure, logged, previous.get(exercise.id) ?? []),
         };
-      }),
-    })),
+      });
+
+      // A superset rests once per round, as long as the longest rest any of its
+      // exercises asks for; a lone exercise rests as long as it says.
+      const groupRest = restForRound(exercises.map((e) => e.restSeconds));
+      const sequence = planGroupSets(exercises.map((e) => e.rows.length), group.superset).map((planned) => ({
+        ...planned,
+        restSeconds: group.superset ? groupRest : restForRound([exercises[planned.exercise]!.restSeconds]),
+      }));
+
+      return { superset: group.superset, sequence, exercises };
+    }),
   };
 }
 
@@ -307,4 +325,124 @@ export async function finishLog(id: string): Promise<void> {
     .update({ status: "finished", finished_at: new Date().toISOString() })
     .eq("id", id);
   if (upErr) throw new Error(`Finish failed: ${upErr.message}`);
+}
+
+async function requireInProgress(logId: string): Promise<void> {
+  const { data: log, error } = await db.from("strength_logs").select("id, status").eq("id", logId).maybeSingle();
+  if (error) throw new Error(`Lookup failed: ${error.message}`);
+  if (!log) throw new LogError("No such session.", 404);
+  if (log.status !== "in_progress") throw new LogError("This session is finished.", 409);
+}
+
+async function loadEntry(logId: string, entryId: string): Promise<Record<string, any>> {
+  const { data, error } = await db.from("strength_log_exercises").select("*").eq("id", entryId).eq("log_id", logId).maybeSingle();
+  if (error) throw new Error(`Lookup failed: ${error.message}`);
+  if (!data) throw new LogError("That exercise isn't part of this session.", 404);
+  return data;
+}
+
+export interface ExerciseChoice {
+  name: string;
+  /** Only used when the name is new. */
+  measure?: Measure;
+  perSide?: boolean;
+}
+
+/** The exercise a typed name refers to, creating it when nothing matches. */
+export async function resolveExercise(choice: ExerciseChoice): Promise<Exercise> {
+  const name = choice.name?.trim().replace(/\s+/g, " ");
+  if (!name) throw new LogError("Give the exercise a name.", 400);
+
+  const library = await loadExercises();
+  const existing = findExercise(library, name);
+  if (existing) return existing;
+
+  const { data, error } = await db
+    .from("exercises")
+    .insert({
+      name,
+      name_key: exerciseKey(name),
+      measure: choice.measure === "hold" ? "hold" : "reps",
+      per_side: Boolean(choice.perSide),
+    })
+    .select("*")
+    .single();
+  if (error) throw new Error(`Create exercise failed: ${error.message}`);
+  return toExercise(data);
+}
+
+/** Adds an exercise to the end of a session. The template is untouched. */
+export async function addLogExercise(logId: string, choice: ExerciseChoice): Promise<void> {
+  await requireInProgress(logId);
+  const exercise = await resolveExercise(choice);
+
+  const { data: last, error } = await db
+    .from("strength_log_exercises")
+    .select("position")
+    .eq("log_id", logId)
+    .order("position", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(`Lookup failed: ${error.message}`);
+
+  const target = retarget(null, exercise.measure);
+  const { error: insErr } = await db.from("strength_log_exercises").insert({
+    log_id: logId,
+    position: (last?.[0]?.position ?? -1) + 1,
+    exercise_id: exercise.id,
+    sets: target.sets,
+    reps_min: target.repsMin,
+    reps_max: target.repsMax,
+    hold_seconds: target.holdSeconds,
+  });
+  if (insErr) throw new Error(`Add exercise failed: ${insErr.message}`);
+}
+
+export async function addSet(logId: string, entryId: string): Promise<void> {
+  await requireInProgress(logId);
+  const entry = await loadEntry(logId, entryId);
+  const { error } = await db.from("strength_log_exercises").update({ sets: entry.sets + 1 }).eq("id", entryId);
+  if (error) throw new Error(`Add set failed: ${error.message}`);
+}
+
+/** Drops the last set row, discarding it if it had been logged. */
+export async function removeLastSet(logId: string, entryId: string): Promise<void> {
+  await requireInProgress(logId);
+  const entry = await loadEntry(logId, entryId);
+  if (entry.sets <= 1) throw new LogError("An exercise needs at least one set.", 409);
+
+  const { error: delErr } = await db.from("strength_log_sets").delete().eq("log_exercise_id", entryId).eq("set_index", entry.sets - 1);
+  if (delErr) throw new Error(`Remove set failed: ${delErr.message}`);
+  const { error } = await db.from("strength_log_exercises").update({ sets: entry.sets - 1 }).eq("id", entryId);
+  if (error) throw new Error(`Remove set failed: ${error.message}`);
+}
+
+/**
+ * Swaps the exercise in a slot for another, keeping the set count. Refused once
+ * a set has been logged against the old one, so a logged set never silently
+ * changes what it was a set of.
+ */
+export async function swapExercise(logId: string, entryId: string, choice: ExerciseChoice): Promise<void> {
+  await requireInProgress(logId);
+  const entry = await loadEntry(logId, entryId);
+
+  const { data: logged, error } = await db.from("strength_log_sets").select("id").eq("log_exercise_id", entryId).limit(1);
+  if (error) throw new Error(`Lookup failed: ${error.message}`);
+  if (logged?.length) throw new LogError("Un-log this exercise's sets before swapping it.", 409);
+
+  const exercise = await resolveExercise(choice);
+  const target = retarget(toLogSlot(entry), exercise.measure);
+  const { error: upErr } = await db
+    .from("strength_log_exercises")
+    .update({
+      exercise_id: exercise.id,
+      sets: target.sets,
+      reps_min: target.repsMin,
+      reps_max: target.repsMax,
+      hold_seconds: target.holdSeconds,
+      // Rest and cues belonged to the exercise swapped out.
+      rest_seconds: null,
+      note: null,
+    })
+    .eq("id", entryId);
+  if (upErr) throw new Error(`Swap failed: ${upErr.message}`);
 }

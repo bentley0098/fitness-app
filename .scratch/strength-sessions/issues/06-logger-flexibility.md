@@ -4,10 +4,10 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Add set and remove set work on any exercise mid-session
-- [ ] Swapping an exercise keeps the slot's targets and pre-fills from the new exercise's history
-- [ ] Adding an exercise not in the template works
-- [ ] A typed name matching an existing exercise reuses it; otherwise a new exercise is created
-- [ ] Strength module tests cover add, remove and swap rules
+- [x] Add set and remove set work on any exercise mid-session
+- [x] Swapping an exercise keeps the slot's targets and pre-fills from the new exercise's history
+- [x] Adding an exercise not in the template works
+- [x] A typed name matching an existing exercise reuses it; otherwise a new exercise is created
+- [x] Strength module tests cover add, remove and swap rules

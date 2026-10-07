@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRows, exerciseKey, latestPerExercise, findExercise, groupSlots, previousSession, targetLabel, validateSlots, type Exercise, type TemplateSlot } from "../strength";
+import { DEFAULT_REST_SECONDS, buildRows, exerciseKey, latestPerExercise, planGroupSets, restForRound, retarget, findExercise, groupSlots, previousSession, targetLabel, validateSlots, type Exercise, type TemplateSlot } from "../strength";
 import { SEED_EXERCISES, SEED_TEMPLATES, planSeed } from "../strengthSeed";
 
 function exercise(over: Partial<Exercise> & { id: string; name: string }): Exercise {
@@ -255,5 +255,66 @@ describe("latestPerExercise", () => {
     ]);
 
     expect(Object.fromEntries(picked)).toEqual({ squat: "b", row: "c" });
+  });
+});
+
+describe("retarget", () => {
+  const repsTarget = { sets: 4, repsMin: 6, repsMax: 8, holdSeconds: null };
+  const holdTarget = { sets: 3, repsMin: null, repsMax: null, holdSeconds: 45 };
+
+  it("keeps a slot's targets when the new exercise is measured the same way", () => {
+    expect(retarget(repsTarget, "reps")).toEqual(repsTarget);
+    expect(retarget(holdTarget, "hold")).toEqual(holdTarget);
+  });
+
+  it("keeps the set count but swaps reps for a hold time when the measure changes", () => {
+    expect(retarget(repsTarget, "hold")).toEqual({ sets: 4, repsMin: null, repsMax: null, holdSeconds: 30 });
+  });
+
+  it("swaps a hold time for reps when the measure changes the other way", () => {
+    expect(retarget(holdTarget, "reps")).toEqual({ sets: 3, repsMin: 8, repsMax: 8, holdSeconds: null });
+  });
+
+  it("gives an exercise added from nothing three sets", () => {
+    expect(retarget(null, "reps")).toEqual({ sets: 3, repsMin: 8, repsMax: 8, holdSeconds: null });
+    expect(retarget(null, "hold")).toEqual({ sets: 3, repsMin: null, repsMax: null, holdSeconds: 30 });
+  });
+});
+
+describe("planGroupSets", () => {
+  it("lists a lone exercise's sets in order, resting after each", () => {
+    expect(planGroupSets([3], false)).toEqual([
+      { exercise: 0, setIndex: 0, restAfter: true },
+      { exercise: 0, setIndex: 1, restAfter: true },
+      { exercise: 0, setIndex: 2, restAfter: true },
+    ]);
+  });
+
+  it("alternates the exercises of a superset, resting only after each round", () => {
+    expect(planGroupSets([2, 2], true)).toEqual([
+      { exercise: 0, setIndex: 0, restAfter: false },
+      { exercise: 1, setIndex: 0, restAfter: true },
+      { exercise: 0, setIndex: 1, restAfter: false },
+      { exercise: 1, setIndex: 1, restAfter: true },
+    ]);
+  });
+
+  it("copes with one exercise having more sets than the other", () => {
+    const order = planGroupSets([3, 2], true);
+
+    expect(order.map((s) => `${s.exercise}:${s.setIndex}`)).toEqual(["0:0", "1:0", "0:1", "1:1", "0:2"]);
+    expect(order[order.length - 1]).toMatchObject({ exercise: 0, setIndex: 2, restAfter: true });
+  });
+});
+
+describe("restForRound", () => {
+  it("is the longest rest any exercise in the round asks for", () => {
+    expect(restForRound([60, 150])).toBe(150);
+  });
+
+  it("uses the 90 second default for an exercise that doesn't say", () => {
+    expect(restForRound([null])).toBe(DEFAULT_REST_SECONDS);
+    expect(restForRound([60, null])).toBe(DEFAULT_REST_SECONDS);
+    expect(DEFAULT_REST_SECONDS).toBe(90);
   });
 });

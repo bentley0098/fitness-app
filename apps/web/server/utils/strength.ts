@@ -184,3 +184,58 @@ export function latestPerExercise(
   }
   return new Map([...best].map(([exerciseId, c]) => [exerciseId, c.logExerciseId]));
 }
+
+export type Target = Pick<TemplateSlot, "sets" | "repsMin" | "repsMax" | "holdSeconds">;
+
+const DEFAULT_SETS = 3;
+const DEFAULT_REPS = 8;
+const DEFAULT_HOLD_SECONDS = 30;
+
+/**
+ * The targets for an exercise dropped into a slot (or added with no slot at all):
+ * the slot's set count and targets are kept when the measure matches, and
+ * replaced with a plain default when it doesn't, since 8 reps means nothing to
+ * a plank.
+ */
+export function retarget(slot: Target | null, measure: Measure): Target {
+  const sets = slot?.sets ?? DEFAULT_SETS;
+  if (measure === "hold") {
+    return { sets, repsMin: null, repsMax: null, holdSeconds: slot?.holdSeconds ?? DEFAULT_HOLD_SECONDS };
+  }
+  const repsMin = slot?.repsMin ?? DEFAULT_REPS;
+  return { sets, repsMin, repsMax: slot?.repsMax ?? repsMin, holdSeconds: null };
+}
+
+export interface PlannedSet {
+  /** Index into the group's exercises. */
+  exercise: number;
+  setIndex: number;
+  /** Whether the rest timer starts once this set is logged. */
+  restAfter: boolean;
+}
+
+/**
+ * The order a group's sets are done in. A lone exercise runs set by set. A
+ * superset goes round by round, one set of each exercise in turn, and rests only
+ * after the last set of each round.
+ */
+export function planGroupSets(setCounts: number[], superset: boolean): PlannedSet[] {
+  if (!superset) {
+    return setCounts.flatMap((count, exercise) =>
+      Array.from({ length: count }, (_, setIndex) => ({ exercise, setIndex, restAfter: true })),
+    );
+  }
+
+  const rounds = Math.max(0, ...setCounts);
+  const planned: PlannedSet[] = [];
+  for (let setIndex = 0; setIndex < rounds; setIndex++) {
+    const inRound = setCounts.map((count, exercise) => ({ count, exercise })).filter((e) => e.count > setIndex);
+    inRound.forEach((e, i) => planned.push({ exercise: e.exercise, setIndex, restAfter: i === inRound.length - 1 }));
+  }
+  return planned;
+}
+
+/** Rest after a round: the longest any exercise in it asks for. */
+export function restForRound(restSeconds: (number | null)[]): number {
+  return Math.max(...restSeconds.map((r) => r ?? DEFAULT_REST_SECONDS));
+}

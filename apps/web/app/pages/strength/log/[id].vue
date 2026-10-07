@@ -20,94 +20,107 @@
           :class="group.superset ? 'border border-accent-500 p-2' : ''"
         >
           <p v-if="group.superset" class="px-1 text-[11px] font-semibold uppercase tracking-wide text-accent-700">
-            Superset
+            Superset · alternate the exercises, rest after each round
           </p>
 
-          <section
-            v-for="exercise in group.exercises"
-            :key="exercise.logExerciseId"
-            class="rounded-card border border-line bg-surface p-3.5 shadow-card"
-          >
-            <div class="flex items-baseline justify-between gap-3">
-              <h2 class="min-w-0 text-sm font-semibold text-ink">{{ exercise.name }}</h2>
-              <span class="tnum shrink-0 text-xs text-subtle">{{ exercise.target }}</span>
+          <!-- One card per exercise, each listing its own sets... -->
+          <template v-if="!group.superset">
+            <section
+              v-for="exercise in group.exercises"
+              :key="exercise.logExerciseId"
+              class="rounded-card border border-line bg-surface p-3.5 shadow-card"
+            >
+              <ExerciseHeader :exercise="exercise" />
+              <ExercisePicker
+                v-if="swapping === exercise.logExerciseId"
+                class="mt-3"
+                :library="library"
+                label="Swap for"
+                submit-label="Swap"
+                @pick="(choice) => swap(exercise, choice)"
+                @cancel="swapping = null"
+              />
+              <ul class="mt-3 space-y-2">
+                <SetRow
+                  v-for="item in group.sequence"
+                  :key="item.setIndex"
+                  :row="exercise.rows[item.setIndex]!"
+                  :exercise="exercise"
+                  @toggle="onToggle(exercise, exercise.rows[item.setIndex]!, item.restAfter ? item.restSeconds : null)"
+                  @edit="onEdit(exercise, exercise.rows[item.setIndex]!)"
+                />
+              </ul>
+              <ExerciseActions
+                v-if="data.status === 'in_progress'"
+                :rows="exercise.rows.length"
+                @add-set="structure(exercise, 'add-set')"
+                @remove-set="structure(exercise, 'remove-set')"
+                @swap="swapping = swapping === exercise.logExerciseId ? null : exercise.logExerciseId"
+              />
+            </section>
+          </template>
+
+          <!-- ...but a superset is one card whose sets alternate. -->
+          <section v-else class="rounded-card border border-line bg-surface p-3.5 shadow-card">
+            <div v-for="exercise in group.exercises" :key="exercise.logExerciseId" class="mb-3 border-b border-line pb-3 last:mb-0 last:border-0 last:pb-0">
+              <ExerciseHeader :exercise="exercise" />
+              <ExercisePicker
+                v-if="swapping === exercise.logExerciseId"
+                class="mt-3"
+                :library="library"
+                label="Swap for"
+                submit-label="Swap"
+                @pick="(choice) => swap(exercise, choice)"
+                @cancel="swapping = null"
+              />
+              <ExerciseActions
+                v-if="data.status === 'in_progress'"
+                :rows="exercise.rows.length"
+                @add-set="structure(exercise, 'add-set')"
+                @remove-set="structure(exercise, 'remove-set')"
+                @swap="swapping = swapping === exercise.logExerciseId ? null : exercise.logExerciseId"
+              />
             </div>
-            <p v-if="exercise.note" class="mt-1 text-xs text-muted">{{ exercise.note }}</p>
-
-            <ul class="mt-3 space-y-2">
-              <li
-                v-for="row in exercise.rows"
-                :key="row.setIndex"
-                class="grid grid-cols-[1.5rem_1fr_auto] items-center gap-2"
-              >
-                <span class="tnum text-xs font-semibold text-subtle">{{ row.setIndex + 1 }}</span>
-
-                <div class="flex min-w-0 items-center gap-2">
-                  <label v-if="exercise.measure === 'reps'" class="flex items-center gap-1">
-                    <input
-                      v-model.number="row.reps"
-                      type="number"
-                      inputmode="numeric"
-                      min="0"
-                      class="tnum w-16 rounded-lg border border-line bg-canvas px-2 py-1.5 text-center text-sm text-ink"
-                      :aria-label="`Set ${row.setIndex + 1} reps`"
-                      @change="onEdit(exercise, row)"
-                    />
-                    <span class="text-xs text-subtle">reps</span>
-                  </label>
-                  <label v-if="exercise.measure === 'reps'" class="flex items-center gap-1">
-                    <input
-                      v-model.number="row.weightKg"
-                      type="number"
-                      inputmode="decimal"
-                      step="0.5"
-                      min="0"
-                      placeholder="BW"
-                      class="tnum w-20 rounded-lg border border-line bg-canvas px-2 py-1.5 text-center text-sm text-ink"
-                      :aria-label="`Set ${row.setIndex + 1} weight in kilograms`"
-                      @change="onEdit(exercise, row)"
-                    />
-                    <span class="text-xs text-subtle">kg</span>
-                  </label>
-                  <label v-else class="flex items-center gap-1">
-                    <input
-                      v-model.number="row.holdSeconds"
-                      type="number"
-                      inputmode="numeric"
-                      min="0"
-                      class="tnum w-20 rounded-lg border border-line bg-canvas px-2 py-1.5 text-center text-sm text-ink"
-                      :aria-label="`Set ${row.setIndex + 1} hold in seconds`"
-                      @change="onEdit(exercise, row)"
-                    />
-                    <span class="text-xs text-subtle">s</span>
-                  </label>
-                  <span v-if="previousLabel(exercise, row)" class="tnum truncate text-[11px] text-subtle">
-                    last {{ previousLabel(exercise, row) }}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  class="inline-flex h-9 w-9 items-center justify-center rounded-pill border transition-colors"
-                  :class="row.logged ? 'border-verdict-progress bg-verdict-progress text-white' : 'border-line-strong text-subtle'"
-                  :aria-label="row.logged ? `Un-log set ${row.setIndex + 1}` : `Log set ${row.setIndex + 1}`"
-                  :aria-pressed="row.logged"
-                  @click="onToggle(exercise, row)"
-                >
-                  <AppIcon name="check" :size="16" :stroke-width="2.5" />
-                </button>
-              </li>
+            <ul class="mt-3 space-y-2 border-t border-line pt-3">
+              <SetRow
+                v-for="item in group.sequence"
+                :key="`${item.exercise}-${item.setIndex}`"
+                :row="group.exercises[item.exercise]!.rows[item.setIndex]!"
+                :exercise="group.exercises[item.exercise]!"
+                :label="group.exercises[item.exercise]!.name"
+                @toggle="onToggle(group.exercises[item.exercise]!, group.exercises[item.exercise]!.rows[item.setIndex]!, item.restAfter ? item.restSeconds : null)"
+                @edit="onEdit(group.exercises[item.exercise]!, group.exercises[item.exercise]!.rows[item.setIndex]!)"
+              />
             </ul>
           </section>
+        </div>
+
+        <div v-if="data.status === 'in_progress'">
+          <ExercisePicker
+            v-if="adding"
+            :library="library"
+            label="Add exercise"
+            submit-label="Add"
+            @pick="addExercise"
+            @cancel="adding = false"
+          />
+          <button v-else type="button" class="text-xs font-medium text-accent-700" @click="adding = true">+ Add exercise</button>
         </div>
 
         <p v-if="saveError" class="text-xs text-verdict-regress" role="alert">{{ saveError }}</p>
 
         <div
           v-if="data.status === 'in_progress'"
-          class="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 p-3 backdrop-blur"
+          class="fixed inset-x-0 bottom-0 z-30 space-y-2 border-t border-line bg-surface/95 p-3 backdrop-blur"
           :style="{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 4.25rem)' }"
         >
+          <div v-if="rest.active.value" class="mx-auto flex max-w-lg items-center justify-between gap-3 rounded-card bg-accent-100 px-4 py-2.5" role="timer">
+            <span class="text-sm font-semibold text-accent-700">Rest <span class="tnum">{{ restLabel }}</span></span>
+            <span class="flex gap-3 text-xs font-medium text-accent-700">
+              <button type="button" @click="rest.extend(30)">+30 s</button>
+              <button type="button" @click="rest.skip()">Skip</button>
+            </span>
+          </div>
           <button
             type="button"
             class="mx-auto block w-full max-w-lg rounded-card bg-accent-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
@@ -123,12 +136,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 
 const route = useRoute();
 const id = String(route.params.id);
 
-const { data, pending, error } = await useFetch(`/api/strength/logs/${id}`);
+const { data, pending, error, refresh } = await useFetch(`/api/strength/logs/${id}`);
+const { data: libraryData, refresh: refreshLibrary } = await useFetch("/api/strength/exercises", { default: () => ({ exercises: [] }) });
+const library = computed(() => libraryData.value.exercises);
 
 type Exercise = NonNullable<typeof data.value>["groups"][number]["exercises"][number];
 type Row = Exercise["rows"][number];
@@ -151,7 +166,7 @@ function payload(exercise: Exercise, row: Row) {
 }
 
 // Logged straight away, one set at a time: leaving the app mid-workout loses nothing.
-async function onToggle(exercise: Exercise, row: Row) {
+async function onToggle(exercise: Exercise, row: Row, restSeconds: number | null = null) {
   saveError.value = null;
   const wasLogged = row.logged;
   row.logged = !wasLogged;
@@ -163,6 +178,7 @@ async function onToggle(exercise: Exercise, row: Row) {
       });
     } else {
       await $fetch(`/api/strength/logs/${id}/sets`, { method: "PUT", body: payload(exercise, row) });
+      if (restSeconds) rest.start(restSeconds);
     }
   } catch (e) {
     row.logged = wasLogged;
@@ -182,12 +198,47 @@ async function onEdit(exercise: Exercise, row: Row) {
   }
 }
 
-function previousLabel(exercise: Exercise, row: Row): string | null {
-  const p = row.previous;
-  if (!p) return null;
-  if (exercise.measure === "hold") return p.holdSeconds != null ? `${p.holdSeconds} s` : null;
-  if (p.reps == null) return null;
-  return p.weightKg != null ? `${p.reps} × ${p.weightKg} kg` : `${p.reps} reps`;
+const rest = useRestTimer();
+const restLabel = computed(() => {
+  const total = rest.remaining.value;
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+});
+
+const swapping = ref<string | null>(null);
+const adding = ref(false);
+
+type Choice = { name: string; measure: "reps" | "hold"; perSide: boolean };
+
+// Structure changes (sets, swaps, extra exercises) reload the session: the
+// server owns what rows exist, and the rows it hands back are pre-filled.
+async function change(request: () => Promise<unknown>, fallback: string) {
+  saveError.value = null;
+  try {
+    await request();
+    await Promise.all([refresh(), refreshLibrary()]);
+  } catch (e) {
+    saveError.value = describe(e, fallback);
+  }
+}
+
+function structure(exercise: Exercise, action: "add-set" | "remove-set") {
+  return change(
+    () => $fetch(`/api/strength/logs/${id}/exercises/${exercise.logExerciseId}/${action}`, { method: "POST" }),
+    "Couldn't change the sets.",
+  );
+}
+
+async function swap(exercise: Exercise, choice: Choice) {
+  await change(
+    () => $fetch(`/api/strength/logs/${id}/exercises/${exercise.logExerciseId}/swap`, { method: "POST", body: choice }),
+    "Couldn't swap that exercise.",
+  );
+  if (!saveError.value) swapping.value = null;
+}
+
+async function addExercise(choice: Choice) {
+  await change(() => $fetch(`/api/strength/logs/${id}/exercises`, { method: "POST", body: choice }), "Couldn't add that exercise.");
+  if (!saveError.value) adding.value = false;
 }
 
 async function finish() {
