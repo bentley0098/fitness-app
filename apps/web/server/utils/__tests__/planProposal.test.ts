@@ -294,3 +294,37 @@ describe("superseding", () => {
     expect(selectSuperseded([pending("p1", add(FRI)), pending("p2", add(WED))], [add(FRI)])).toEqual(["p1"]);
   });
 });
+
+describe("staleness of a swapped session", () => {
+  const wed = session({ id: "s-wed", date: WED });
+  const fri = session({ id: "s-fri", date: FRI });
+  const swap: OperationRequest[] = [{ kind: "move", sessionId: "s-wed", toDate: FRI }];
+
+  it("refuses when the session being swapped out changed after the proposal", () => {
+    const ops = snapshotOperations([wed, fri], swap);
+    if (!ops.ok) throw new Error(ops.message);
+
+    const result = planApply([wed, { ...fri, revision: 2 }], ops.operations);
+
+    expect(result).toMatchObject({ ok: false, reason: "stale" });
+  });
+
+  it("refuses when a session appeared on the target day after the proposal", () => {
+    const ops = snapshotOperations([wed], swap);
+    if (!ops.ok) throw new Error(ops.message);
+
+    const result = planApply([wed, fri], ops.operations);
+
+    expect(result).toMatchObject({ ok: false, reason: "stale" });
+  });
+});
+
+describe("weekly volume", () => {
+  it("counts a session prescribed by duration alone as zero distance", () => {
+    const timed = session({ id: "s-timed", date: WED, prescription: { durationMin: 30 } });
+
+    const result = plan([timed], [{ kind: "update", sessionId: "s-timed", patch: { prescription: { distanceKm: 5 } } }]);
+
+    expect(result.ok && result.volume).toEqual([{ weekStart: "2026-09-21", beforeM: 0, afterM: 5_000 }]);
+  });
+});

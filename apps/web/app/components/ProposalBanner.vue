@@ -1,7 +1,7 @@
 <template>
   <NuxtLink
     v-if="first"
-    :to="`/proposal/${first.id}`"
+    :to="count === 1 ? `/proposal/${first.id}` : '/proposal'"
     class="flex items-center justify-between gap-3 rounded-card border border-verdict-hold/30 bg-verdict-hold-soft p-3.5"
   >
     <span class="flex items-center gap-2 text-sm font-semibold text-verdict-hold">

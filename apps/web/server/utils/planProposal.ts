@@ -50,7 +50,12 @@ export type OperationRequest = AddRequest | TargetedRequest;
  * what expiry reads. Adds have no existing session, so no revision to check.
  */
 export type Operation =
-  | (TargetedRequest & { expectedRevision: number; sessionDate: string })
+  | (TargetedRequest & {
+      expectedRevision: number;
+      sessionDate: string;
+      /** For a move: the session sitting on the target day when proposed, which a move there swaps out. */
+      occupant?: { id: string; expectedRevision: number };
+    })
   | (AddRequest & { sessionDate: string });
 
 export interface WeekVolume {
@@ -100,7 +105,14 @@ export function snapshotOperations(sessions: PlannerSession[], requests: Operati
     }
     const target = sessions.find((s) => s.id === request.sessionId);
     if (!target) return fail("missing", `No session with id ${request.sessionId}.`);
-    operations.push({ ...request, expectedRevision: target.revision, sessionDate: target.date });
+    const occupant =
+      request.kind === "move" ? sessions.find((s) => s.date === request.toDate && s.id !== target.id) : undefined;
+    operations.push({
+      ...request,
+      expectedRevision: target.revision,
+      sessionDate: target.date,
+      ...(occupant ? { occupant: { id: occupant.id, expectedRevision: occupant.revision } } : {}),
+    });
   }
   return { ok: true, operations };
 }
@@ -169,6 +181,14 @@ export function planApply(sessions: PlannerSession[], operations: Operation[]): 
       // operation of its own — then the final date check decides.
       const occupant = working.find((s) => s.date === op.toDate && s.id !== target.id);
       const swap = occupant && !referenced.has(occupant.id) ? occupant : null;
+
+      // The swapped-out session has no operation of its own, so its state is
+      // checked here: it must be the one that was there, unchanged.
+      const seen = op.occupant;
+      const current = swap ? sessions.find((s) => s.id === swap.id) : undefined;
+      if (swap && (!seen || seen.id !== swap.id || current?.revision !== seen.expectedRevision)) {
+        return fail("stale", "Plan changed since this was proposed.");
+      }
       working = working.map((s) => {
         if (s.id === target.id) return { ...s, date: op.toDate };
         if (swap && s.id === swap.id) return { ...s, date: target.date };

@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { evaluate } from "@fitness/engine";
 import { z } from "zod";
 import type { OperationRequest } from "../utils/planProposal";
-import { ProposalError, createProposal, loadPlannerSessions } from "../utils/planProposals";
+import { ProposalError, createProposal, loadPlannerSessions, pendingProposalIdsBySession } from "../utils/planProposals";
 import { addDaysIso, isoDate } from "../utils/dates";
 import { loadTrainingWindow } from "../utils/trainingData";
 
@@ -54,11 +54,14 @@ export function createMcpServer(appOrigin = ""): McpServer {
     "get_sessions",
     {
       description:
-        "Planned sessions between two ISO dates (inclusive), each with its id, date, phase, type, prescription, cap, status and revision. Use the id when proposing a change.",
+        "Planned sessions between two ISO dates (inclusive), each with its id, date, phase, type, prescription, cap, status, revision and the ids of any pending proposals already touching it. Use the id when proposing a change.",
       inputSchema: { from: z.string().describe("ISO date, inclusive"), to: z.string().describe("ISO date, inclusive") },
     },
     async ({ from, to }) => {
-      const sessions = (await loadPlannerSessions()).filter((s) => s.date >= from && s.date <= to);
+      const [all, pending] = await Promise.all([loadPlannerSessions(), pendingProposalIdsBySession()]);
+      const sessions = all
+        .filter((s) => s.date >= from && s.date <= to)
+        .map((s) => ({ ...s, pendingProposalIds: pending.get(s.id) ?? [] }));
       return textResult(sessions);
     },
   );

@@ -121,6 +121,9 @@ export const planProposals = pgTable("plan_proposals", {
   // session it was made against (see server/utils/planProposal.ts).
   operations: jsonb("operations").notNull(),
   engineVerdict: text("engine_verdict").notNull(),
+  // The rows and weekly volume as they looked when proposed, so a decided
+  // proposal is not re-judged against a plan that has moved on.
+  preview: jsonb("preview"),
   // pending | applied | rejected | superseded. Expiry is derived at read time
   // from the operations' dates, never stored.
   status: text("status").notNull().default("pending"),

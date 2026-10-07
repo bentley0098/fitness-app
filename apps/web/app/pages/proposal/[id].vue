@@ -1,8 +1,8 @@
 <template>
   <div class="space-y-4 p-4">
     <header>
-      <NuxtLink to="/plan" class="mb-2 inline-flex items-center gap-1 text-xs font-medium text-accent-700">
-        <AppIcon name="chevron-left" :size="14" /> Plan
+      <NuxtLink to="/proposal" class="mb-2 inline-flex items-center gap-1 text-xs font-medium text-accent-700">
+        <AppIcon name="chevron-left" :size="14" /> All plan changes
       </NuxtLink>
       <h1 class="text-xl font-bold text-ink">Proposed change</h1>
     </header>

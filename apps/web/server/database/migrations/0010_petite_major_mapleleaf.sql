@@ -1,0 +1,1 @@
+ALTER TABLE "plan_proposals" ADD COLUMN "preview" jsonb;

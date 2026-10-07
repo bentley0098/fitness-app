@@ -8,6 +8,7 @@ import {
   selectSuperseded,
   snapshotOperations,
   type Operation,
+  type ApplyPlan,
   type OperationRequest,
   type PlannerSession,
   type WeekVolume,
@@ -36,6 +37,7 @@ export interface ProposalRow {
   rationale: string;
   operations: Operation[];
   engine_verdict: string;
+  preview: ProposalPreview | null;
   status: string;
   status_note: string | null;
   created_at: string;
@@ -61,6 +63,44 @@ export async function loadPlannerSessions(): Promise<PlannerSession[]> {
   return (data ?? []).map(toPlannerSession);
 }
 
+export interface ProposalPreview {
+  rows: { kind: string; date: string; toDate: string | null; before: string | null; after: string | null }[];
+  volume: WeekVolume[];
+}
+
+/** Before/after per operation, plus weekly volume, as the proposal screen shows it. */
+function buildPreview(operations: Operation[], sessions: PlannerSession[], plan: Extract<ApplyPlan, { ok: true }>): ProposalPreview {
+  const byId = new Map(sessions.map((s) => [s.id, s]));
+  const afterById = new Map(plan.after.map((s) => [s.id, s]));
+
+  const rows: ProposalPreview["rows"] = operations.map((op) => {
+    if (op.kind === "add") {
+      return { kind: "add", date: op.date, toDate: null, before: null, after: sessionLabel(op.type, op.prescription) };
+    }
+    const before = byId.get(op.sessionId);
+    const after = afterById.get(op.sessionId);
+    return {
+      kind: op.kind,
+      date: op.sessionDate,
+      toDate: op.kind === "move" ? op.toDate : null,
+      before: before ? sessionLabel(before.type, before.prescription) : null,
+      after: op.kind === "remove" ? null : after ? sessionLabel(after.type, after.prescription) : null,
+    };
+  });
+
+  // A move onto an occupied day swaps the other session; show it rather than
+  // let it change without a row.
+  const named = new Set(operations.flatMap((op) => (op.kind === "add" ? [] : [op.sessionId])));
+  for (const s of plan.after) {
+    const was = byId.get(s.id);
+    if (!was || named.has(s.id) || was.date === s.date) continue;
+    const label = sessionLabel(s.type, s.prescription);
+    rows.push({ kind: "swap", date: was.date, toDate: s.date, before: label, after: label });
+  }
+
+  return { rows, volume: plan.volume };
+}
+
 export interface CreatedProposal {
   proposalId: string;
   verdict: string;
@@ -82,7 +122,14 @@ export async function createProposal(requests: OperationRequest[], rationale: st
 
   const { data, error } = await db
     .from("plan_proposals")
-    .insert({ rationale, operations: snapshot.operations, engine_verdict: evaluation.verdict })
+    .insert({
+      rationale,
+      operations: snapshot.operations,
+      engine_verdict: evaluation.verdict,
+      // Kept so a decided proposal still reads as it did when it was made,
+      // rather than being re-judged against a plan that has moved on.
+      preview: buildPreview(snapshot.operations, sessions, plan),
+    })
     .select("id")
     .single();
   if (error) throw new Error(`Proposal insert failed: ${error.message}`);
@@ -94,17 +141,29 @@ export async function createProposal(requests: OperationRequest[], rationale: st
     .select("id, operations")
     .eq("status", "pending")
     .neq("id", data.id);
-  if (pendingErr) throw new Error(`Supersede lookup failed: ${pendingErr.message}`);
+  if (pendingErr) {
+    await discardProposal(data.id);
+    throw new Error(`Supersede lookup failed: ${pendingErr.message}`);
+  }
   const replaced = selectSuperseded((pending ?? []) as { id: string; operations: Operation[] }[], snapshot.operations);
   if (replaced.length > 0) {
     const { error: supErr } = await db
       .from("plan_proposals")
       .update({ status: "superseded", status_note: "Replaced by a newer proposal", decided_at: new Date().toISOString() })
       .in("id", replaced);
-    if (supErr) throw new Error(`Supersede failed: ${supErr.message}`);
+    if (supErr) {
+      // Don't leave two pending proposals on one session.
+      await discardProposal(data.id);
+      throw new Error(`Supersede failed: ${supErr.message}`);
+    }
   }
 
   return { proposalId: data.id, verdict: evaluation.verdict, volume: plan.volume };
+}
+
+async function discardProposal(id: string): Promise<void> {
+  const { error } = await db.from("plan_proposals").delete().eq("id", id);
+  if (error) console.error(`[createProposal] could not discard proposal ${id}: ${error.message}`);
 }
 
 async function loadProposal(id: string): Promise<ProposalRow> {
@@ -141,8 +200,9 @@ export async function approveProposal(id: string): Promise<void> {
 
   if (!plan.ok) {
     // A stale plan means I changed something after this was proposed. Nothing
-    // is written; the proposal is parked so I know to ask again.
-    await settle(id, "superseded", plan.message);
+    // is written; the proposal is parked so I know to ask again. Any other
+    // refusal leaves it pending, with the reason in the response.
+    if (plan.reason === "stale") await settle(id, "superseded", plan.message);
     throw new ProposalError(plan.message, 409);
   }
 
@@ -210,7 +270,10 @@ export async function approveProposal(id: string): Promise<void> {
   // what was removed is kept on the proposal itself.
   if (audit.length > 0) {
     const { error: auditErr } = await db.from("plan_revisions").insert(audit);
-    if (auditErr) console.error(`[approveProposal] audit insert failed: ${auditErr.message}`);
+    if (auditErr) {
+      await rollback();
+      throw new Error(`Apply failed and was rolled back: audit insert failed: ${auditErr.message}`);
+    }
   }
 
   await settle(id, "applied", null);
@@ -230,6 +293,31 @@ export async function listPendingProposals(): Promise<{ id: string; rationale: s
     .map((p) => ({ id: p.id, rationale: p.rationale, createdAt: p.created_at }));
 }
 
+/** Pending proposal ids touching each session, for reads that should show what is already on the table. */
+export async function pendingProposalIdsBySession(): Promise<Map<string, string[]>> {
+  const { data, error } = await db.from("plan_proposals").select("*").eq("status", "pending");
+  if (error) throw new Error(`Load proposals failed: ${error.message}`);
+  const bySession = new Map<string, string[]>();
+  for (const p of (data ?? []) as ProposalRow[]) {
+    if (effectiveStatus(p) !== "pending") continue;
+    for (const op of p.operations) {
+      if (op.kind === "add") continue;
+      bySession.set(op.sessionId, [...(bySession.get(op.sessionId) ?? []), p.id]);
+    }
+  }
+  return bySession;
+}
+
+/** The most recent decided or expired proposals, for the history list. */
+export async function listRecentProposals(limit = 20): Promise<{ id: string; rationale: string; status: string; createdAt: string }[]> {
+  const { data, error } = await db.from("plan_proposals").select("*").order("created_at", { ascending: false }).limit(limit * 2);
+  if (error) throw new Error(`Load proposals failed: ${error.message}`);
+  return ((data ?? []) as ProposalRow[])
+    .map((p) => ({ id: p.id, rationale: p.rationale, status: effectiveStatus(p), createdAt: p.created_at }))
+    .filter((p) => p.status !== "pending")
+    .slice(0, limit);
+}
+
 export interface ProposalView {
   id: string;
   rationale: string;
@@ -241,39 +329,19 @@ export interface ProposalView {
   volume: WeekVolume[];
 }
 
-/** A proposal as the app shows it: before/after per operation, plus weekly volume. */
+/**
+ * A proposal as the app shows it. A pending one is judged against the plan as
+ * it is now; every other state shows the preview stored when it was made, so
+ * an applied or rejected proposal still reads as it was proposed.
+ */
 export async function viewProposal(id: string): Promise<ProposalView> {
   const proposal = await loadProposal(id);
-  const sessions = await loadPlannerSessions();
-  const plan = planApply(sessions, proposal.operations);
-  const byId = new Map(sessions.map((s) => [s.id, s]));
-  const afterById = plan.ok ? new Map(plan.after.map((s) => [s.id, s])) : new Map<string, PlannerSession>();
 
-  const rows: ProposalView["rows"] = proposal.operations.map((op) => {
-    if (op.kind === "add") {
-      return { kind: "add", date: op.date, toDate: null, before: null, after: sessionLabel(op.type, op.prescription) };
-    }
-    const before = byId.get(op.sessionId);
-    const after = afterById.get(op.sessionId);
-    return {
-      kind: op.kind,
-      date: op.sessionDate,
-      toDate: op.kind === "move" ? op.toDate : null,
-      before: before ? sessionLabel(before.type, before.prescription) : null,
-      after: op.kind === "remove" ? null : after ? sessionLabel(after.type, after.prescription) : null,
-    };
-  });
-
-  // A move onto an occupied day swaps the other session; show it rather than
-  // let it change without a row.
-  if (plan.ok) {
-    const named = new Set(proposal.operations.flatMap((op) => (op.kind === "add" ? [] : [op.sessionId])));
-    for (const s of plan.after) {
-      const was = byId.get(s.id);
-      if (!was || named.has(s.id) || was.date === s.date) continue;
-      const label = sessionLabel(s.type, s.prescription);
-      rows.push({ kind: "swap", date: was.date, toDate: s.date, before: label, after: label });
-    }
+  let preview: ProposalPreview = proposal.preview ?? { rows: [], volume: [] };
+  if (proposal.status === "pending") {
+    const sessions = await loadPlannerSessions();
+    const plan = planApply(sessions, proposal.operations);
+    if (plan.ok) preview = buildPreview(proposal.operations, sessions, plan);
   }
 
   return {
@@ -283,7 +351,7 @@ export async function viewProposal(id: string): Promise<ProposalView> {
     statusNote: proposal.status_note,
     engineVerdict: proposal.engine_verdict,
     createdAt: proposal.created_at,
-    rows,
-    volume: plan.ok ? plan.volume : [],
+    rows: preview.rows,
+    volume: preview.volume,
   };
 }
