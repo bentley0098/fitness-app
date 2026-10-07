@@ -20,7 +20,7 @@ const PHASE_CLASSES: Record<string, string> = {
   build: "bg-accent-500/20 text-accent-700",
   peak: "bg-verdict-regress-soft text-verdict-regress",
   taper: "bg-verdict-hold-soft text-verdict-hold",
-  race: "bg-ink text-white",
+  race: "bg-hero text-white",
 };
 
 const props = defineProps<{ phase: string | null | undefined }>();

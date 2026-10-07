@@ -19,6 +19,7 @@
 
   --c-canvas: 248 250 252; /* slate-50  — page background */
   --c-surface: 255 255 255; /* white     — cards */
+  --c-hero: 15 23 42; /* slate-900 — dark feature cards; text on them is always white */
   --c-raised: 241 245 249; /* slate-100 — inset chips, wells, skeletons */
 
   --c-line: 226 232 240; /* slate-200 — hairlines */
@@ -43,6 +44,56 @@
   --c-regress-soft: 255 237 213;
   --c-stop: 185 28 28;
   --c-stop-soft: 254 226 226;
+  --c-on-solid: 255 255 255; /* text on a solid verdict fill */
+
+  /* session kind bars on the plan page */
+  --c-kind-easy: 34 197 94;
+  --c-kind-gym: 239 68 68;
+  --c-kind-physio: 234 179 8;
+  --c-kind-long: 168 85 247;
+  --c-kind-workout: 249 115 22;
+}
+
+/*
+ * Dark theme: the same tokens, retuned. Applied by the `dark` class on <html>,
+ * which useTheme sets from the saved choice or the device setting.
+ *
+ * accent-700 is the accent TEXT colour, so it goes light here; accent-500/600
+ * stay mid-green because they are fills with white text on them. The same
+ * goes for verdict-*: bright enough to read as text on slate-900, still a
+ * usable fill.
+ */
+.dark {
+  color-scheme: dark;
+
+  --c-canvas: 12 12 12; /* neutral grey */
+  --c-surface: 22 22 22;
+  --c-raised: 34 34 34;
+  --c-hero: 36 36 36;
+
+  --c-line: 38 38 38;
+  --c-line-strong: 56 56 56;
+
+  --c-ink: 245 245 245;
+  --c-ink-muted: 163 163 163;
+  --c-ink-subtle: 130 130 130;
+
+  --c-accent-50: 6 46 36;
+  --c-accent-100: 6 78 59;
+  --c-accent-300: 52 211 153;
+  --c-accent-500: 16 185 129;
+  --c-accent-600: 5 150 105;
+  --c-accent-700: 110 231 183;
+
+  --c-progress: 16 185 129;
+  --c-progress-soft: 6 78 59;
+  --c-hold: 245 158 11;
+  --c-hold-soft: 69 26 3;
+  --c-regress: 251 146 60;
+  --c-regress-soft: 67 20 7;
+  --c-stop: 248 113 113;
+  --c-stop-soft: 69 10 10;
+  --c-on-solid: 12 12 12; /* verdict fills are bright here, so text on them goes dark */
 }
 
 html {

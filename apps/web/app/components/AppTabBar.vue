@@ -25,8 +25,8 @@ const route = useRoute();
 const tabs = [
   { to: "/", label: "Home", icon: "home" },
   { to: "/plan", label: "Plan", icon: "calendar" },
-  { to: "/activity", label: "Activity", icon: "run" },
   { to: "/strength", label: "Strength", icon: "dumbbell" },
+  { to: "/progress", label: "Progress", icon: "trend" },
   { to: "/more", label: "More", icon: "dots" },
 ];
 

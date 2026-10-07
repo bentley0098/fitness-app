@@ -53,7 +53,7 @@
     <button
       type="button"
       class="inline-flex h-9 w-9 items-center justify-center rounded-pill border transition-colors"
-      :class="row.logged ? 'border-verdict-progress bg-verdict-progress text-white' : 'border-line-strong text-subtle'"
+      :class="row.logged ? 'border-verdict-progress bg-verdict-progress text-on-solid' : 'border-line-strong text-subtle'"
       :aria-label="row.logged ? `Un-log set ${row.setIndex + 1}` : `Log set ${row.setIndex + 1}`"
       :aria-pressed="row.logged"
       @click="$emit('toggle')"

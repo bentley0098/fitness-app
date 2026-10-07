@@ -1,5 +1,5 @@
 <template>
-  <div class="rounded-card bg-ink p-4 text-white">
+  <div class="rounded-card bg-hero p-4 text-white">
     <div class="flex items-start justify-between gap-3">
       <div>
         <div class="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-white/60">

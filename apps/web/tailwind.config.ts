@@ -20,6 +20,8 @@ export default {
         canvas: v("--c-canvas"),
         surface: v("--c-surface"),
         raised: v("--c-raised"),
+        hero: v("--c-hero"),
+        "on-solid": v("--c-on-solid"),
         line: v("--c-line"),
         "line-strong": v("--c-line-strong"),
         ink: v("--c-ink"),
@@ -33,6 +35,13 @@ export default {
           600: v("--c-accent-600"),
           700: v("--c-accent-700"),
           DEFAULT: v("--c-accent-600"),
+        },
+        kind: {
+          easy: v("--c-kind-easy"),
+          gym: v("--c-kind-gym"),
+          physio: v("--c-kind-physio"),
+          long: v("--c-kind-long"),
+          workout: v("--c-kind-workout"),
         },
         verdict: {
           progress: v("--c-progress"),

@@ -42,7 +42,7 @@
              with labels like "15 min continuous (~2.5 km)". -->
         <section
           ref="dayList"
-          class="space-y-2"
+          class="space-y-3"
           :class="drag.isDragging.value ? 'touch-none' : ''"
           @pointermove="drag.onPointerMove"
           @pointerup="drag.onPointerUp"
@@ -59,6 +59,7 @@
               :dragging-id="drag.activeKey.value"
               :is-drop-target="drag.isDragging.value && drag.overKey.value === day.date && draggedFrom?.date !== day.date"
               @grab="(event, sessionId) => drag.onPointerDown(event, sessionId, dateOf(sessionId) ?? day.date)"
+              @open="openSession"
             />
           </div>
         </section>
@@ -116,6 +117,13 @@ const drag = useLongPressDrag({
   container: dayList,
   onDrop: (sessionId, toDate) => void moveSession(sessionId, toDate),
 });
+
+// The Start/Resume button and any link inside a row keep their own click.
+function openSession(event: MouseEvent, session: Parameters<typeof sessionHref>[0]) {
+  if (drag.consumeClick()) return;
+  if ((event.target as HTMLElement | null)?.closest("button, a")) return;
+  void navigateTo(sessionHref(session));
+}
 
 function dateOf(sessionId: string): string | undefined {
   return data.value?.days.find((d) => d.sessions.some((s) => s.id === sessionId))?.date;

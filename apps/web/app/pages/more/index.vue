@@ -23,6 +23,24 @@
     </nav>
 
     <section class="space-y-2">
+      <SectionHeader title="Appearance" sub="System follows your device" />
+      <div class="grid grid-cols-3 gap-1 rounded-card border border-line bg-surface p-1 shadow-card" role="radiogroup" aria-label="Theme">
+        <button
+          v-for="o in THEMES"
+          :key="o.value"
+          type="button"
+          role="radio"
+          :aria-checked="theme === o.value"
+          class="rounded-lg py-2 text-sm font-medium transition-colors"
+          :class="theme === o.value ? 'bg-accent-600 text-white' : 'text-muted hover:bg-raised'"
+          @click="setTheme(o.value)"
+        >
+          {{ o.label }}
+        </button>
+      </div>
+    </section>
+
+    <section class="space-y-2">
       <SectionHeader title="Data" sub="Row counts straight from Supabase" />
       <AsyncState :pending="pending" :error="error" title="Couldn't reach the database" :skeletons="1">
         <div v-if="health" class="overflow-hidden rounded-card border border-line bg-surface shadow-card">
@@ -42,9 +60,17 @@
 
 <script setup lang="ts">
 const links = [
+  { to: "/activity", label: "Activity", sub: "Every run synced from Garmin", icon: "run" },
   { to: "/more/trends", label: "Trends", sub: "Volume, workload ratio and verdict history", icon: "trend" },
   { to: "/more/log", label: "Log a note", sub: "Optional RPE and free text for today", icon: "note" },
 ];
+
+const THEMES: { value: ThemeChoice; label: string }[] = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
+const { choice: theme, set: setTheme } = useTheme();
 
 const { data: health, pending, error } = await useFetch<Record<string, number | string>>("/api/health");
 </script>

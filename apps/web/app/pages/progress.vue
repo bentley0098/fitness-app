@@ -1,0 +1,143 @@
+<template>
+  <div class="space-y-4 p-4">
+    <header>
+      <h1 class="text-xl font-bold text-ink">Progress</h1>
+    </header>
+
+    <AsyncState :pending="pending" :error="error" title="Couldn't load your dashboard" :skeletons="4">
+      <template v-if="data">
+        <RaceCountdown :race="data.race" :phase="data.week.phase" />
+
+        <AdaptationBanner :verdict="data.verdict" :reason="data.reason" :signals="data.signals" />
+
+        <!-- This week -->
+        <section class="space-y-2">
+          <SectionHeader title="This week" :sub="`Week ${data.week.number} of ${data.race.totalWeeks}`">
+            <template #action>
+              <NuxtLink to="/plan" class="text-xs font-medium text-accent-700">Full plan →</NuxtLink>
+            </template>
+          </SectionHeader>
+
+          <div class="rounded-card border border-line bg-surface p-4 shadow-card">
+            <WeeklyVolumeChart :weeks="data.weeklyVolume" />
+          </div>
+        </section>
+
+        <!-- Garmin stats -->
+        <section class="space-y-2">
+          <SectionHeader title="Latest from Garmin" :sub="lastSyncLabel" />
+
+          <div class="grid grid-cols-2 gap-2">
+            <MetricTile
+              label="Training load"
+              icon="gauge"
+              :value="loadValue"
+              :sub="loadSub"
+            />
+            <MetricTile
+              label="VO2 max"
+              icon="trend"
+              :value="formatNumber(data.vo2Max.current, 1)"
+              :trend="data.vo2Max.delta30d"
+              trend-good="up"
+              :sub="data.vo2Max.current == null ? 'No qualifying run yet' : '30-day change'"
+            />
+            <MetricTile
+              label="Resting HR"
+              icon="heart"
+              :value="formatNumber(metrics?.restingHr)"
+              unit="bpm"
+              :trend="data.today.restingHrDelta28d"
+              trend-good="down"
+              sub="vs 28-day avg"
+            >
+              <div class="mt-2"><Sparkline :points="data.sparklines.restingHr" variant="danger" /></div>
+            </MetricTile>
+            <MetricTile
+              label="HRV"
+              icon="trend"
+              :value="metrics?.hrvStatus ? humanizePhase(metrics.hrvStatus) : null"
+              :sub="metrics?.hrvLastNightAvg != null ? `${formatNumber(metrics.hrvLastNightAvg)} ms last night` : undefined"
+            />
+            <SleepCard :sleep="metrics?.sleep ?? null" />
+            <MetricTile
+              label="Body battery"
+              icon="battery"
+              :value="formatNumber(metrics?.bodyBatteryMax)"
+              :sub="metrics?.bodyBatteryMin != null ? `low of ${formatNumber(metrics.bodyBatteryMin)}` : undefined"
+            >
+              <div class="mt-2"><Sparkline :points="data.sparklines.bodyBattery" /></div>
+            </MetricTile>
+          </div>
+
+          <div
+            v-if="data.signals.lowBodyBatteryToday"
+            class="rounded-card border border-line bg-raised p-3 text-xs text-muted"
+          >
+            Body battery is low today — a same-day caution, not a change to the plan. Consider an easier session if
+            you have the flexibility.
+          </div>
+        </section>
+
+        <!-- Race predictions -->
+        <section v-if="data.racePredictions" class="space-y-2">
+          <SectionHeader
+            title="Race predictions"
+            :sub="`Garmin · ${formatDate(data.racePredictions.date, { day: 'numeric', month: 'short' })}`"
+          />
+          <RacePredictionsCard :predictions="data.racePredictions" />
+        </section>
+
+        <!-- Recent activity -->
+        <section v-if="data.recentActivities.length" class="space-y-2">
+          <SectionHeader title="Recent runs">
+            <template #action>
+              <NuxtLink to="/activity" class="text-xs font-medium text-accent-700">All →</NuxtLink>
+            </template>
+          </SectionHeader>
+          <div class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface shadow-card">
+            <NuxtLink
+              v-for="a in data.recentActivities"
+              :key="a.id"
+              :to="`/activity/${a.id}`"
+              class="block p-3 transition-colors hover:bg-raised"
+            >
+              <ActivityRow :activity="a" />
+            </NuxtLink>
+          </div>
+        </section>
+      </template>
+    </AsyncState>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed } from "vue";
+
+const { data, pending, error } = await useFetch("/api/dashboard");
+
+const metrics = computed(() => data.value?.today.metrics ?? null);
+
+// Garmin's own Training Load isn't reachable through the Node SDK, so this is
+// the engine's acute:chronic ratio — labelled honestly rather than dressed up
+// as the vendor metric.
+const loadValue = computed(() => {
+  const l = data.value?.load;
+  if (!l) return null;
+  if (l.unbounded) return "High";
+  if (l.insufficientHistory) return DASH;
+  return formatNumber(l.ratio, 2);
+});
+
+const loadSub = computed(() => {
+  const l = data.value?.load;
+  if (!l) return undefined;
+  if (l.insufficientHistory) return `Building baseline · ${l.historyDays}/${l.minHistoryDays} days`;
+  return `Sweet spot ${l.sweetSpotMin}–${l.sweetSpotMax}`;
+});
+
+const lastSyncLabel = computed(() => {
+  const d = data.value?.lastActivityAt;
+  return d ? `Last activity ${formatDate(d, { day: "numeric", month: "short" })}` : undefined;
+});
+</script>

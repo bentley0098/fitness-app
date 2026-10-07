@@ -87,7 +87,7 @@ export interface SessionRowData {
   changedBecause: string | null;
   targetDistanceM: number | null;
   targetDurationS: number | null;
-  completion: Completion & { logId?: string | null };
+  completion: Completion & { logId?: string | null; activityIds?: string[] };
   /** Strength work: started in the logger from a template, rather than run. */
   isStrength?: boolean;
   templateId?: string | null;
@@ -107,29 +107,10 @@ const props = withDefaults(
 
 const completion = computed(() => props.session.completion);
 
-const starting = ref(false);
-const startError = ref<string | null>(null);
-
-// Starting from the plan links the new log to this planned session, so
-// finishing it is what completes it.
-async function start() {
-  starting.value = true;
-  startError.value = null;
-  try {
-    const { id } = await $fetch<{ id: string }>("/api/strength/logs", {
-      method: "POST",
-      body: { templateId: props.session.templateId, planSessionId: props.session.id },
-    });
-    await navigateTo(`/strength/log/${id}`);
-  } catch (e) {
-    startError.value = (e as { data?: { statusMessage?: string } })?.data?.statusMessage || "Couldn't start the session.";
-  } finally {
-    starting.value = false;
-  }
-}
+const { starting, startError, start } = useStartSession(() => props.session);
 
 const STATE_BADGES: Record<string, { icon: string; class: string; title: string }> = {
-  completed: { icon: "check", class: "bg-verdict-progress text-white", title: "Completed" },
+  completed: { icon: "check", class: "bg-verdict-progress text-on-solid", title: "Completed" },
   partial: { icon: "check", class: "bg-verdict-hold-soft text-verdict-hold", title: "Partially completed" },
   missed: { icon: "alert", class: "bg-verdict-regress-soft text-verdict-regress", title: "Missed" },
   today: { icon: "clock", class: "bg-accent-100 text-accent-700", title: "Due today" },

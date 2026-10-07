@@ -14,7 +14,7 @@ import {
   weekStartForNumber,
 } from "./planMeta";
 import { buildDay, sessionsByDate, totalsFor, type ActivityLike, type DaySession, type SessionLike, type StrengthLogLike } from "./planCompletion";
-import { isStrengthType } from "./planLabels";
+import { isStrengthType, typeLabel } from "./planLabels";
 import { loadStrengthLogsLike } from "./strengthLogs";
 import { selectTolerant } from "./optionalColumns";
 import { ACTIVITY_BASE_COLUMNS, ACTIVITY_COLUMNS, toActivityDto } from "./serialize";
@@ -67,11 +67,33 @@ function toSessionDto(s: DaySession) {
     revision: s.revision ?? 1,
     changedBecause: s.changed_because ?? null,
     label: s.label,
+    typeLabel: typeLabel(s.type),
     targetDistanceM: s.targetDistanceM,
     targetDurationS: s.targetDurationS,
     completion: s.completion,
     isStrength: isStrengthType(s.type),
     templateId: typeof s.prescription?.templateId === "string" ? s.prescription.templateId : null,
+  };
+}
+
+function nextSessionAfter(sessions: SessionLike[], afterIso: string) {
+  const next = sessions.find((s) => s.date > afterIso);
+  return next ? { date: next.date, label: typeLabel(next.type) } : null;
+}
+
+/** One planned session with its derived completion, or null when the id is unknown. */
+export function buildPlannedSession(snapshot: PlanSnapshot, id: string) {
+  const row = snapshot.sessions.find((s) => s.id === id);
+  if (!row) return null;
+
+  const sameDay = snapshot.sessions.filter((s) => s.date === row.date);
+  const day = buildDay(row.date, sameDay, snapshot.activities, snapshot.today, snapshot.strengthLogs);
+  const session = day.sessions.find((s) => s.id === id);
+  if (!session) return null;
+
+  return {
+    ...toSessionDto(session),
+    weekStart: mondayOf(row.date),
   };
 }
 
@@ -94,6 +116,8 @@ export function buildWeek(snapshot: PlanSnapshot, anyDateInWeek: string) {
       phase: phaseForWeek(snapshot.sessions, dates),
       ...totals,
     },
+    // First session after this week, for a rest day's "Next up".
+    nextAfterWeek: nextSessionAfter(snapshot.sessions, weekEndForStart(startIso)),
     nav: {
       prevWeekStart: startIso > FIRST_WEEK_START ? weekStartForNumber(number - 1) : null,
       nextWeekStart: startIso < LAST_WEEK_START ? weekStartForNumber(number + 1) : null,
@@ -165,6 +189,7 @@ export function buildOverview(snapshot: PlanSnapshot) {
   return {
     race: raceInfo(snapshot.today),
     totalWeeks: TOTAL_WEEKS,
+    today: snapshot.today,
     currentWeekNumber,
     maxPlannedDistanceM,
     weeks,

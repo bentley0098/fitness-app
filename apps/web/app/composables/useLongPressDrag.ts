@@ -191,9 +191,22 @@ export function useLongPressDrag({ container, onDrop }: LongPressDragOptions) {
     overKey.value = nearestTarget(targets, here.y + window.scrollY, targetSlack());
   }
 
+  // Letting go of a held card is followed by a click on it; that click ends a
+  // drag, it isn't a tap, so whoever opens things on click asks here first.
+  let dragJustEnded = false;
+  function consumeClick(): boolean {
+    const was = dragJustEnded;
+    dragJustEnded = false;
+    return was;
+  }
+
   function onPointerUp() {
     const from = activeKey.value;
     const to = overKey.value;
+    if (isDragging.value) {
+      dragJustEnded = true;
+      setTimeout(() => (dragJustEnded = false), 100);
+    }
     reset();
     if (from && to && from !== to) onDrop(from, to);
   }
@@ -232,6 +245,7 @@ export function useLongPressDrag({ container, onDrop }: LongPressDragOptions) {
     onPointerMove,
     onPointerUp,
     onKeyDown,
+    consumeClick,
     cancel: reset,
   };
 }

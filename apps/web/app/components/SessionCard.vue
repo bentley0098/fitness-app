@@ -1,30 +1,32 @@
 <template>
+  <!-- A day: a light header with a rule under it, then one card per session.
+       The whole block is the drop target while a session is being moved. -->
   <div
-    class="rounded-card border bg-surface p-3.5 shadow-card transition-all"
-    :class="[
-      isToday ? 'border-accent-500 ring-1 ring-accent-500/20' : 'border-line',
-      // A filled accent panel, not another ring — today's card already wears
-      // an accent ring and the two must not read the same mid-drag.
-      isDropTarget ? 'border-accent-500 bg-accent-100 ring-2 ring-accent-500' : '',
-    ]"
+    class="-mx-2 rounded-card px-2 py-1 transition-colors"
+    :class="isDropTarget ? 'bg-accent-100 ring-2 ring-accent-500' : ''"
   >
-    <div class="flex items-center gap-2">
-      <span class="text-xs font-semibold uppercase tracking-wide text-subtle">
+    <div class="flex items-center gap-2 border-b pb-1.5" :class="isToday ? 'border-accent-500' : 'border-line'">
+      <span class="text-xs font-semibold uppercase tracking-wide" :class="isToday ? 'text-accent-700' : 'text-subtle'">
         {{ weekdayShort(date) }} {{ dayOfMonth(date) }}
       </span>
       <StatPill v-if="isToday" tone="accent" label="Today" />
     </div>
 
-    <p v-if="!sessions.length && !unplannedStrength.length" class="mt-1 text-sm font-medium text-subtle">Rest day</p>
+    <p v-if="!sessions.length && !unplannedStrength.length" class="py-2.5 text-sm text-subtle">Rest day</p>
 
-    <div v-else class="mt-1.5 divide-y divide-line">
+    <div v-else class="mt-2 space-y-2">
       <div
         v-for="session in sessions"
         :key="session.id"
-        class="py-2.5 first:pt-0 last:pb-0"
+        class="flex cursor-pointer overflow-hidden rounded-card border border-line bg-surface shadow-card transition-opacity"
+        :class="draggingId === session.id ? 'opacity-30' : ''"
+        @click="$emit('open', $event, session)"
         @pointerdown="draggable && $emit('grab', $event, session.id)"
       >
-        <SessionRow :session="session" :draggable="draggable" :is-source-gap="draggingId === session.id" />
+        <span class="w-1.5 shrink-0" :class="KIND_BAR[sessionKind(session.type)]" />
+        <div class="min-w-0 flex-1 p-3.5">
+          <SessionRow :session="session" :draggable="draggable" />
+        </div>
       </div>
     </div>
 
@@ -50,6 +52,7 @@
 </template>
 
 <script setup lang="ts">
+import { KIND_BAR, sessionKind } from "~/composables/sessionKind";
 import type { SessionRowData } from "./SessionRow.vue";
 
 withDefaults(
@@ -70,5 +73,5 @@ withDefaults(
   { unplanned: null, unplannedStrength: () => [], draggable: false, draggingId: null, isDropTarget: false },
 );
 
-defineEmits<{ grab: [event: PointerEvent, sessionId: string] }>();
+defineEmits<{ grab: [event: PointerEvent, sessionId: string]; open: [event: MouseEvent, session: SessionRowData] }>();
 </script>

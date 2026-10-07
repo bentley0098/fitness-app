@@ -26,7 +26,7 @@ const NEUTRAL: VerdictStyle = {
   soft: "bg-raised",
   text: "text-muted",
   border: "border-line",
-  onSolid: "text-white",
+  onSolid: "text-on-solid",
 };
 
 const STYLES: Record<Verdict, VerdictStyle> = {
@@ -36,7 +36,7 @@ const STYLES: Record<Verdict, VerdictStyle> = {
     soft: "bg-verdict-progress-soft",
     text: "text-verdict-progress",
     border: "border-verdict-progress/30",
-    onSolid: "text-white",
+    onSolid: "text-on-solid",
   },
   hold: {
     label: "hold",
@@ -44,7 +44,7 @@ const STYLES: Record<Verdict, VerdictStyle> = {
     soft: "bg-verdict-hold-soft",
     text: "text-verdict-hold",
     border: "border-verdict-hold/30",
-    onSolid: "text-white",
+    onSolid: "text-on-solid",
   },
   regress: {
     label: "regress",
@@ -52,7 +52,7 @@ const STYLES: Record<Verdict, VerdictStyle> = {
     soft: "bg-verdict-regress-soft",
     text: "text-verdict-regress",
     border: "border-verdict-regress/30",
-    onSolid: "text-white",
+    onSolid: "text-on-solid",
   },
   stop: {
     label: "stop",
@@ -60,7 +60,7 @@ const STYLES: Record<Verdict, VerdictStyle> = {
     soft: "bg-verdict-stop-soft",
     text: "text-verdict-stop",
     border: "border-verdict-stop/40",
-    onSolid: "text-white",
+    onSolid: "text-on-solid",
   },
 };
 

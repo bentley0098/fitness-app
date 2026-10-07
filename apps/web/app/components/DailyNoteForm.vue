@@ -33,7 +33,7 @@
     <button
       type="submit"
       :disabled="saving"
-      class="w-full rounded-card bg-accent-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-accent-700 disabled:opacity-50"
+      class="w-full rounded-card bg-accent-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-accent-500 disabled:opacity-50"
     >
       {{ saving ? "Saving…" : saved ? "Saved" : "Save" }}
     </button>
