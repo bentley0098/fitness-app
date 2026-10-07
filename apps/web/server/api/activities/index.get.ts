@@ -2,7 +2,7 @@ import { db } from "../../utils/db";
 import { selectTolerant } from "../../utils/optionalColumns";
 import { ACTIVITY_BASE_COLUMNS, ACTIVITY_COLUMNS, toActivityDto } from "../../utils/serialize";
 import { sessionLabel } from "../../utils/planLabels";
-import { countsToward } from "../../utils/planCompletion";
+import { countsToward, sessionForEachActivity, sessionsByDate } from "../../utils/planCompletion";
 
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 100;
@@ -39,16 +39,25 @@ export default defineEventHandler(async (event) => {
   // Annotate each run with the session it satisfies, if any. Scoped to the
   // dates actually on this page rather than loading the whole plan.
   const dates = [...new Set(rows.map((r) => r.date))];
-  const sessionsByDate = new Map<string, Record<string, any>>();
+  const matchedSession = new Map<string, Record<string, any>>();
 
   if (dates.length) {
-    const { data: sessions } = await db.from("plan_sessions").select("*").in("date", dates);
-    for (const s of sessions ?? []) sessionsByDate.set(s.date, s);
+    const [{ data: sessions }, { data: dayActivities }] = await Promise.all([
+      db.from("plan_sessions").select("*").in("date", dates),
+      db.from("activities").select("id, date, activity_type, distance_m, moving_time_s").in("date", dates),
+    ]);
+    const sessionsOn = sessionsByDate((sessions ?? []) as any[]);
+    for (const [date, onDay] of sessionsOn) {
+      const activitiesOn = (dayActivities ?? []).filter((a: any) => a.date === date);
+      for (const [activityId, session] of sessionForEachActivity(onDay as any[], activitiesOn as any[])) {
+        matchedSession.set(activityId, session as Record<string, any>);
+      }
+    }
   }
 
   return {
     activities: rows.map((r) => {
-      const session = sessionsByDate.get(r.date);
+      const session = matchedSession.get(r.id);
       const matched = session && countsToward(r as any, session.type);
       return {
         ...toActivityDto(r),

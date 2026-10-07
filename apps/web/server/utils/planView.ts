@@ -13,7 +13,7 @@ import {
   weekNumberFor,
   weekStartForNumber,
 } from "./planMeta";
-import { buildDay, totalsFor, type ActivityLike, type SessionLike } from "./planCompletion";
+import { buildDay, sessionsByDate, totalsFor, type ActivityLike, type DaySession, type SessionLike } from "./planCompletion";
 import { selectTolerant } from "./optionalColumns";
 import { ACTIVITY_BASE_COLUMNS, ACTIVITY_COLUMNS, toActivityDto } from "./serialize";
 
@@ -51,20 +51,31 @@ function phaseForWeek(sessions: SessionLike[], dates: string[]): string | null {
   return inWeek[0]?.phase ?? null;
 }
 
+function toSessionDto(s: DaySession) {
+  return {
+    id: s.id,
+    date: s.date,
+    phase: s.phase,
+    type: s.type,
+    prescription: s.prescription ?? {},
+    status: s.status ?? "planned",
+    revision: s.revision ?? 1,
+    changedBecause: s.changed_because ?? null,
+    label: s.label,
+    targetDistanceM: s.targetDistanceM,
+    targetDurationS: s.targetDurationS,
+    completion: s.completion,
+  };
+}
+
 /** One week, always seven days Monday-first so the client does no calendar maths. */
 export function buildWeek(snapshot: PlanSnapshot, anyDateInWeek: string) {
   const startIso = mondayOf(anyDateInWeek);
   const dates = weekDates(startIso);
   const number = weekNumberFor(startIso);
 
-  const days = dates.map((date) =>
-    buildDay(
-      date,
-      snapshot.sessions.find((s) => s.date === date) ?? null,
-      snapshot.activities,
-      snapshot.today,
-    ),
-  );
+  const sessionsOn = sessionsByDate(snapshot.sessions);
+  const days = dates.map((date) => buildDay(date, sessionsOn.get(date) ?? [], snapshot.activities, snapshot.today));
 
   const totals = totalsFor(days);
 
@@ -87,23 +98,9 @@ export function buildWeek(snapshot: PlanSnapshot, anyDateInWeek: string) {
       date: d.date,
       isToday: d.isToday,
       isPast: d.isPast,
-      session: d.session
-        ? {
-            id: d.session.id,
-            date: d.session.date,
-            phase: d.session.phase,
-            type: d.session.type,
-            prescription: d.session.prescription ?? {},
-            status: d.session.status ?? "planned",
-            revision: d.session.revision ?? 1,
-            changedBecause: d.session.changed_because ?? null,
-            label: d.session.label,
-            targetDistanceM: d.session.targetDistanceM,
-            targetDurationS: d.session.targetDurationS,
-          }
-        : null,
+      sessions: d.sessions.map(toSessionDto),
       activities: d.activities.map((a) => toActivityDto(a as Record<string, any>)),
-      completion: d.completion,
+      unplanned: d.unplanned,
     })),
   };
 }
@@ -111,19 +108,13 @@ export function buildWeek(snapshot: PlanSnapshot, anyDateInWeek: string) {
 /** All 27 weeks, aggregated — the collapsible full-plan view. */
 export function buildOverview(snapshot: PlanSnapshot) {
   const currentWeekNumber = weekNumberFor(snapshot.today);
+  const sessionsOn = sessionsByDate(snapshot.sessions);
 
   const weeks = Array.from({ length: TOTAL_WEEKS }, (_, i) => {
     const number = i + 1;
     const startDate = weekStartForNumber(number);
     const dates = weekDates(startDate);
-    const days = dates.map((date) =>
-      buildDay(
-        date,
-        snapshot.sessions.find((s) => s.date === date) ?? null,
-        snapshot.activities,
-        snapshot.today,
-      ),
-    );
+    const days = dates.map((date) => buildDay(date, sessionsOn.get(date) ?? [], snapshot.activities, snapshot.today));
     const totals = totalsFor(days);
 
     return {
@@ -135,17 +126,17 @@ export function buildOverview(snapshot: PlanSnapshot) {
       ...totals,
       // The week card's session list: one row per planned session, with the
       // derived completion state so the client can strike finished ones.
-      sessions: days
-        .filter((d) => d.session)
-        .map((d) => ({
-          id: d.session!.id,
+      sessions: days.flatMap((d) =>
+        d.sessions.map((session) => ({
+          id: session.id,
           date: d.date,
-          type: d.session!.type,
-          label: d.session!.label,
-          targetDistanceM: d.session!.targetDistanceM,
-          state: d.completion.state,
-          actualDistanceM: d.completion.actualDistanceM,
+          type: session.type,
+          label: session.label,
+          targetDistanceM: session.targetDistanceM,
+          state: session.completion.state,
+          actualDistanceM: session.completion.actualDistanceM,
         })),
+      ),
       status: number < currentWeekNumber ? "done" : number === currentWeekNumber ? "current" : "upcoming",
     };
   });

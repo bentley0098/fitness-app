@@ -1,5 +1,4 @@
 import { mondayOf } from "./planMeta";
-import { SENTINEL_DATE } from "./planMove";
 import { targetDistanceM, type Prescription } from "./planLabels";
 
 // Pure planning for proposals: what applying a set of operations would do to
@@ -53,8 +52,6 @@ export type Operation =
   | (TargetedRequest & {
       expectedRevision: number;
       sessionDate: string;
-      /** For a move: the session sitting on the target day when proposed, which a move there swaps out. */
-      occupant?: { id: string; expectedRevision: number };
     })
   | (AddRequest & { sessionDate: string });
 
@@ -68,13 +65,9 @@ export type PlanFailure = { ok: false; reason: "invalid" | "missing" | "stale" |
 
 export type SnapshotResult = { ok: true; operations: Operation[] } | PlanFailure;
 
-// Parking date for sessions mid-move; see planMove.ts for why it exists.
-export { SENTINEL_DATE };
-
 /**
- * A row change for the executor, run in order. Non-final writes are
- * bookkeeping (parking); `final` ones carry the session's new state, with
- * `revision` already the new value.
+ * A row change for the executor, run in order. `final` updates carry the
+ * session's new state, with `revision` already the new value.
  */
 export type SessionWrite =
   | {
@@ -105,14 +98,7 @@ export function snapshotOperations(sessions: PlannerSession[], requests: Operati
     }
     const target = sessions.find((s) => s.id === request.sessionId);
     if (!target) return fail("missing", `No session with id ${request.sessionId}.`);
-    const occupant =
-      request.kind === "move" ? sessions.find((s) => s.date === request.toDate && s.id !== target.id) : undefined;
-    operations.push({
-      ...request,
-      expectedRevision: target.revision,
-      sessionDate: target.date,
-      ...(occupant ? { occupant: { id: occupant.id, expectedRevision: occupant.revision } } : {}),
-    });
+    operations.push({ ...request, expectedRevision: target.revision, sessionDate: target.date });
   }
   return { ok: true, operations };
 }
@@ -142,11 +128,6 @@ function plannedM(sessions: PlannerSession[], weekStart: string): number {
 /** The sessions the operations would leave behind, or why they can't apply. */
 export function planApply(sessions: PlannerSession[], operations: Operation[]): ApplyPlan {
   let working = sessions;
-  const referenced = new Map<string, number>();
-  for (const op of operations) {
-    if (op.kind !== "add") referenced.set(op.sessionId, (referenced.get(op.sessionId) ?? 0) + 1);
-  }
-
   let addedCount = 0;
   for (const op of operations) {
     if (op.kind === "add") {
@@ -177,30 +158,8 @@ export function planApply(sessions: PlannerSession[], operations: Operation[]): 
       if (!ISO_DATE.test(op.toDate)) return fail("invalid", `Not a calendar date: ${op.toDate}`);
       if (op.toDate === target.date) continue;
 
-      // Landing on an occupied day swaps, unless the occupant has an
-      // operation of its own — then the final date check decides.
-      const occupant = working.find((s) => s.date === op.toDate && s.id !== target.id);
-      const swap = occupant && !referenced.has(occupant.id) ? occupant : null;
-
-      // The swapped-out session has no operation of its own, so its state is
-      // checked here: it must be the one that was there, unchanged.
-      const seen = op.occupant;
-      const current = swap ? sessions.find((s) => s.id === swap.id) : undefined;
-      if (swap && (!seen || seen.id !== swap.id || current?.revision !== seen.expectedRevision)) {
-        return fail("stale", "Plan changed since this was proposed.");
-      }
-      working = working.map((s) => {
-        if (s.id === target.id) return { ...s, date: op.toDate };
-        if (swap && s.id === swap.id) return { ...s, date: target.date };
-        return s;
-      });
+      working = working.map((s) => (s.id === target.id ? { ...s, date: op.toDate } : s));
     }
-  }
-
-  const dates = new Set<string>();
-  for (const s of working) {
-    if (dates.has(s.date)) return fail("conflict", `More than one session would land on ${s.date}.`);
-    dates.add(s.date);
   }
 
   const before = new Map(sessions.map((s) => [s.id, s]));
@@ -213,13 +172,9 @@ export function planApply(sessions: PlannerSession[], operations: Operation[]): 
   const removed = sessions.filter((s) => !working.some((w) => w.id === s.id));
   const after = working.map((s) => (changed.includes(s) ? { ...s, revision: s.revision + 1 } : s));
 
-  // Order matters: deletes free their days, parking keeps a swap from ever
-  // showing two sessions on one day, and inserts go last onto freed days.
+  // Deletes first, inserts last.
   const writes: SessionWrite[] = [];
   for (const s of removed) writes.push({ kind: "delete", id: s.id });
-  for (const s of changed.filter((c) => c.date !== before.get(c.id)!.date)) {
-    writes.push({ kind: "update", id: s.id, final: false, fields: { date: SENTINEL_DATE } });
-  }
   for (const s of after.filter((a) => changed.some((c) => c.id === a.id))) {
     writes.push({
       kind: "update",
@@ -262,18 +217,23 @@ export function isExpired(operations: Operation[], today: string): boolean {
   return earliest !== undefined && earliest < today;
 }
 
+/** Adds on the same day only compete when they add the same kind of session. */
+function addKey(op: AddRequest): string {
+  return `${op.date}|${op.type}`;
+}
+
 /**
  * Pending proposals a new one replaces: anything touching a session it also
- * touches, or adding on a day it also adds on. Keeps at most one pending
- * proposal per session.
+ * touches, or adding the same kind of session on a day it also adds one.
+ * Keeps at most one pending proposal per session.
  */
 export function selectSuperseded(pending: { id: string; operations: Operation[] }[], incoming: Operation[]): string[] {
   const sessionIds = new Set(incoming.flatMap((op) => (op.kind === "add" ? [] : [op.sessionId])));
-  const addDates = new Set(incoming.flatMap((op) => (op.kind === "add" ? [op.date] : [])));
+  const addKeys = new Set(incoming.flatMap((op) => (op.kind === "add" ? [addKey(op)] : [])));
 
   return pending
     .filter((p) =>
-      p.operations.some((op) => (op.kind === "add" ? addDates.has(op.date) : sessionIds.has(op.sessionId))),
+      p.operations.some((op) => (op.kind === "add" ? addKeys.has(addKey(op)) : sessionIds.has(op.sessionId))),
     )
     .map((p) => p.id);
 }

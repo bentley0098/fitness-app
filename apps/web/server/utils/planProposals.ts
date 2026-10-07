@@ -88,16 +88,6 @@ function buildPreview(operations: Operation[], sessions: PlannerSession[], plan:
     };
   });
 
-  // A move onto an occupied day swaps the other session; show it rather than
-  // let it change without a row.
-  const named = new Set(operations.flatMap((op) => (op.kind === "add" ? [] : [op.sessionId])));
-  for (const s of plan.after) {
-    const was = byId.get(s.id);
-    if (!was || named.has(s.id) || was.date === s.date) continue;
-    const label = sessionLabel(s.type, s.prescription);
-    rows.push({ kind: "swap", date: was.date, toDate: s.date, before: label, after: label });
-  }
-
   return { rows, volume: plan.volume };
 }
 

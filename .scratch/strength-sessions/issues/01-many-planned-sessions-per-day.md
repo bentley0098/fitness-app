@@ -4,10 +4,10 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Moving a planned session to a day that already has one leaves both there, with no swap
-- [ ] A proposal to add a session on an occupied day is accepted, and a proposal's conflicting-operation checks no longer treat two sessions on one date as a conflict
-- [ ] The week view lists every session on a day and shows a rest day only when the day has none
-- [ ] Weekly run volume and existing run completion behave as before
-- [ ] Planner tests cover move-without-swap and adding to an occupied day
+- [x] Moving a planned session to a day that already has one leaves both there, with no swap
+- [x] A proposal to add a session on an occupied day is accepted, and a proposal's conflicting-operation checks no longer treat two sessions on one date as a conflict
+- [x] The week view lists every session on a day and shows a rest day only when the day has none
+- [x] Weekly run volume and existing run completion behave as before
+- [x] Planner tests cover move-without-swap and adding to an occupied day

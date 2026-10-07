@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SENTINEL_DATE, isExpired, planApply, selectSuperseded, snapshotOperations, type Operation, type OperationRequest, type PlannerSession } from "../planProposal";
+import { isExpired, planApply, selectSuperseded, snapshotOperations, type Operation, type OperationRequest, type PlannerSession } from "../planProposal";
 
 // Week of Mon 2026-09-21 .. Sun 2026-09-27.
 const WED = "2026-09-23";
@@ -119,27 +119,14 @@ describe("move operations", () => {
     ]);
   });
 
-  it("swaps with whatever already sits on the target day", () => {
+  it("lands on an occupied day and leaves the session already there alone", () => {
     const result = plan([wed, fri], [{ kind: "move", sessionId: "s-wed", toDate: FRI }]);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.after.find((s) => s.id === "s-wed")?.date).toBe(FRI);
-    expect(result.after.find((s) => s.id === "s-fri")?.date).toBe(WED);
-    expect(result.after.map((s) => s.revision)).toEqual([2, 2]);
-  });
-
-  it("never leaves two sessions on one date while the writes run", () => {
-    const result = plan([wed, fri], [{ kind: "move", sessionId: "s-wed", toDate: FRI }]);
-    if (!result.ok) throw new Error(result.message);
-
-    const dates = new Map([wed, fri].map((s) => [s.id, s.date]));
-    for (const w of result.writes) {
-      if (w.kind === "update" && w.fields.date) dates.set(w.id, w.fields.date);
-      const real = [...dates.values()].filter((d) => d !== SENTINEL_DATE);
-      expect(new Set(real).size).toBe(real.length);
-    }
-    expect(Object.fromEntries(dates)).toEqual({ "s-wed": FRI, "s-fri": WED });
+    expect(result.after.find((s) => s.id === "s-wed")).toMatchObject({ date: FRI, revision: 2 });
+    expect(result.after.find((s) => s.id === "s-fri")).toMatchObject({ date: FRI, revision: 1 });
+    expect(result.writes).toHaveLength(1);
   });
 
   it("bumps a session's revision once when it is both changed and moved", () => {
@@ -157,13 +144,13 @@ describe("move operations", () => {
     expect(result).toMatchObject({ ok: false, reason: "invalid" });
   });
 
-  it("refuses two sessions moved onto the same day", () => {
+  it("allows two sessions moved onto the same day", () => {
     const result = plan([wed, fri], [
       { kind: "move", sessionId: "s-wed", toDate: "2026-09-27" },
       { kind: "move", sessionId: "s-fri", toDate: "2026-09-27" },
     ]);
 
-    expect(result).toMatchObject({ ok: false, reason: "conflict" });
+    expect(result.ok && result.after.map((s) => s.date)).toEqual(["2026-09-27", "2026-09-27"]);
   });
 });
 
@@ -184,10 +171,10 @@ describe("add and remove operations", () => {
     expect(result.volume).toEqual([{ weekStart: "2026-09-21", beforeM: 5_000, afterM: 9_000 }]);
   });
 
-  it("refuses to add a session on a day that already has one", () => {
+  it("adds a session on a day that already has one", () => {
     const result = plan([wed], [{ ...newRun, date: WED }]);
 
-    expect(result).toMatchObject({ ok: false, reason: "conflict" });
+    expect(result.ok && result.after.filter((s) => s.date === WED)).toHaveLength(2);
   });
 
   it("removes a session and drops its distance from the week", () => {
@@ -293,29 +280,11 @@ describe("superseding", () => {
 
     expect(selectSuperseded([pending("p1", add(FRI)), pending("p2", add(WED))], [add(FRI)])).toEqual(["p1"]);
   });
-});
 
-describe("staleness of a swapped session", () => {
-  const wed = session({ id: "s-wed", date: WED });
-  const fri = session({ id: "s-fri", date: FRI });
-  const swap: OperationRequest[] = [{ kind: "move", sessionId: "s-wed", toDate: FRI }];
+  it("keeps a pending add of a different kind of session on the same day", () => {
+    const add = (type: string): Operation => ({ kind: "add", date: FRI, phase: "base", type, prescription: {}, sessionDate: FRI });
 
-  it("refuses when the session being swapped out changed after the proposal", () => {
-    const ops = snapshotOperations([wed, fri], swap);
-    if (!ops.ok) throw new Error(ops.message);
-
-    const result = planApply([wed, { ...fri, revision: 2 }], ops.operations);
-
-    expect(result).toMatchObject({ ok: false, reason: "stale" });
-  });
-
-  it("refuses when a session appeared on the target day after the proposal", () => {
-    const ops = snapshotOperations([wed], swap);
-    if (!ops.ok) throw new Error(ops.message);
-
-    const result = planApply([wed, fri], ops.operations);
-
-    expect(result).toMatchObject({ ok: false, reason: "stale" });
+    expect(selectSuperseded([pending("p1", add("easy_run"))], [add("long_run")])).toEqual([]);
   });
 });
 

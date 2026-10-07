@@ -4,9 +4,9 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Two planned runs on one date each resolve against a distinct activity
-- [ ] A leftover activity shows as unplanned
-- [ ] A day with one planned run behaves exactly as before
-- [ ] Completion tests cover the multi-run cases
+- [x] Two planned runs on one date each resolve against a distinct activity
+- [x] A leftover activity shows as unplanned
+- [x] A day with one planned run behaves exactly as before
+- [x] Completion tests cover the multi-run cases

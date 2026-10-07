@@ -2,7 +2,7 @@ import { computeWorkloadRatio, evaluate } from "@fitness/engine";
 import { addDaysIso, isoDate } from "./dates";
 import { db } from "./db";
 import { loadTrainingWindow } from "./trainingData";
-import { buildDay, totalsFor } from "./planCompletion";
+import { buildDay, sessionsByDate, totalsFor } from "./planCompletion";
 import { mondayOf, weekDates, weekEndForStart, weekNumberFor } from "./planMeta";
 import { raceInfo } from "./planView";
 import { selectTolerant } from "./optionalColumns";
@@ -135,24 +135,10 @@ export async function buildDashboard() {
   const activityRows = window.activities;
 
   // ---- This week -------------------------------------------------------
-  const days = dates.map((date) =>
-    buildDay(
-      date,
-      (sessions.find((s) => s.date === date) as any) ?? null,
-      activityRows as any,
-      today,
-    ),
-  );
-  const weekTotals = days.reduce(
-    (acc, d) => {
-      acc.plannedDistanceM += d.session?.targetDistanceM ?? 0;
-      acc.actualDistanceM += d.completion.actualDistanceM;
-      if (d.session) acc.sessionsPlanned++;
-      if (d.completion.state === "completed") acc.sessionsCompleted++;
-      return acc;
-    },
-    { plannedDistanceM: 0, actualDistanceM: 0, sessionsPlanned: 0, sessionsCompleted: 0 },
-  );
+  const sessionsOn = sessionsByDate(sessions as any[]);
+  const days = dates.map((date) => buildDay(date, sessionsOn.get(date) ?? [], activityRows as any, today));
+  const { plannedDistanceM, actualDistanceM, sessionsPlanned, sessionsCompleted } = totalsFor(days);
+  const weekTotals = { plannedDistanceM, actualDistanceM, sessionsPlanned, sessionsCompleted };
 
   const todayDay = days.find((d) => d.date === today) ?? null;
   const nextSessionRow = sessions
@@ -189,9 +175,7 @@ export async function buildDashboard() {
     const weekDaysView =
       start === weekStart
         ? days
-        : weekDates(start).map((date) =>
-            buildDay(date, sessions.find((s) => s.date === date) ?? null, activityRows as any, today),
-          );
+        : weekDates(start).map((date) => buildDay(date, sessionsOn.get(date) ?? [], activityRows as any, today));
     const totals = totalsFor(weekDaysView);
     return {
       weekStart: start,
@@ -231,15 +215,15 @@ export async function buildDashboard() {
       number: weekNumberFor(today),
       startDate: weekStart,
       endDate: weekEndForStart(weekStart),
-      phase: days.find((d) => d.session)?.session?.phase ?? null,
+      phase: days.find((d) => d.sessions.length)?.sessions[0]?.phase ?? null,
       ...weekTotals,
     },
 
     today: {
       metrics: todayMetrics,
       restingHrDelta28d,
-      session: todayDay?.session ?? null,
-      completion: todayDay?.completion ?? null,
+      sessions: todayDay?.sessions ?? [],
+      unplanned: todayDay?.unplanned ?? null,
       activities: (todayDay?.activities ?? []).map((a) => toActivityDto(a as Record<string, any>)),
     },
 

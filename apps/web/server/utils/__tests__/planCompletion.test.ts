@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDay, countsToward, matchDay, totalsFor, type SessionLike } from "../planCompletion";
+import { buildDay, countsToward, matchDay, sessionForEachActivity, totalsFor, type SessionLike } from "../planCompletion";
 
 const TODAY = "2026-09-22";
 
@@ -114,23 +114,106 @@ describe("explicit status", () => {
 
 describe("buildDay and totalsFor", () => {
   it("only counts activities on that date", () => {
-    const d = buildDay(TODAY, session(), [run(), run({ id: "a2", date: "2026-09-21" })], TODAY);
-    expect(d.completion.actualDistanceM).toBe(5000);
+    const d = buildDay(TODAY, [session()], [run(), run({ id: "a2", date: "2026-09-21" })], TODAY);
+    expect(d.sessions[0]!.completion.actualDistanceM).toBe(5000);
     expect(d.activities).toHaveLength(1);
     expect(d.isToday).toBe(true);
-    expect(d.session?.label).toBe("Easy run · 5.0 km");
+    expect(d.sessions[0]!.label).toBe("Easy run · 5.0 km");
+  });
+
+  it("is a rest day only when it has no sessions and no activity", () => {
+    const rest = buildDay(TODAY, [], [], TODAY);
+    expect(rest.sessions).toEqual([]);
+    expect(rest.unplanned.state).toBe("rest");
+  });
+
+  it("credits an unplanned run on a day with no sessions", () => {
+    const d = buildDay(TODAY, [], [run()], TODAY);
+    expect(d.unplanned).toMatchObject({ state: "unplanned", actualDistanceM: 5000 });
   });
 
   it("rolls a week up, counting rest days as neither planned nor completed", () => {
     const days = [
-      buildDay("2026-09-21", session({ date: "2026-09-21" }), [run({ date: "2026-09-21" })], TODAY),
-      buildDay("2026-09-22", null, [], TODAY),
-      buildDay("2026-09-23", session({ id: "s3", date: "2026-09-23", prescription: { distanceKm: 3 } }), [], TODAY),
+      buildDay("2026-09-21", [session({ date: "2026-09-21" })], [run({ date: "2026-09-21" })], TODAY),
+      buildDay("2026-09-22", [], [], TODAY),
+      buildDay("2026-09-23", [session({ id: "s3", date: "2026-09-23", prescription: { distanceKm: 3 } })], [], TODAY),
     ];
     const t = totalsFor(days);
     expect(t.sessionsPlanned).toBe(2);
     expect(t.sessionsCompleted).toBe(1);
     expect(t.plannedDistanceM).toBe(8000);
     expect(t.actualDistanceM).toBe(5000);
+  });
+
+  it("counts every session on a day with several", () => {
+    const easy = session({ id: "easy", prescription: { distanceKm: 5 } });
+    const strides = session({ id: "strides", prescription: { distanceKm: 2 } });
+    const d = buildDay(TODAY, [easy, strides], [run({ id: "a1", distance_m: 5000 }), run({ id: "a2", distance_m: 2000 })], TODAY);
+    const t = totalsFor([d]);
+    expect(t.sessionsPlanned).toBe(2);
+    expect(t.sessionsCompleted).toBe(2);
+    expect(t.plannedDistanceM).toBe(7000);
+    expect(t.actualDistanceM).toBe(7000);
+  });
+});
+
+function completionOf(day: ReturnType<typeof buildDay>, id: string) {
+  return day.sessions.find((s) => s.id === id)!.completion;
+}
+
+describe("several planned runs on one day", () => {
+  const long = session({ id: "long", prescription: { distanceKm: 10 } });
+  const strides = session({ id: "strides", prescription: { distanceKm: 2 } });
+
+  it("gives each planned run the activity closest to its distance, one each", () => {
+    const d = buildDay(TODAY, [strides, long], [run({ id: "a-long", distance_m: 10_200 }), run({ id: "a-short", distance_m: 1_900 })], TODAY);
+
+    expect(completionOf(d, "long").activityIds).toEqual(["a-long"]);
+    expect(completionOf(d, "strides").activityIds).toEqual(["a-short"]);
+    expect(d.unplanned.state).toBe("rest");
+  });
+
+  it("does not let one activity count towards two runs", () => {
+    const d = buildDay(TODAY, [long, strides], [run({ id: "only", distance_m: 10_000 })], TODAY);
+
+    expect(completionOf(d, "long").state).toBe("completed");
+    expect(completionOf(d, "strides").activityIds).toEqual([]);
+    expect(completionOf(d, "strides").state).toBe("today");
+  });
+
+  it("counts a leftover activity as an unplanned run", () => {
+    const d = buildDay(
+      TODAY,
+      [long, strides],
+      [run({ id: "a1", distance_m: 10_000 }), run({ id: "a2", distance_m: 2_000 }), run({ id: "a3", distance_m: 3_000 })],
+      TODAY,
+    );
+
+    expect(d.unplanned).toMatchObject({ state: "unplanned", actualDistanceM: 3000, activityIds: ["a3"] });
+  });
+
+  it("still gives a lone planned run every matching activity", () => {
+    const d = buildDay(TODAY, [session()], [run({ id: "a1", distance_m: 3000 }), run({ id: "a2", distance_m: 2500 })], TODAY);
+
+    expect(d.sessions[0]!.completion).toMatchObject({ actualDistanceM: 5500, state: "completed" });
+    expect(d.unplanned.state).toBe("rest");
+  });
+});
+
+describe("sessionForEachActivity", () => {
+  it("names the planned run each activity counts towards", () => {
+    const long = session({ id: "long", prescription: { distanceKm: 10 } });
+    const strides = session({ id: "strides", prescription: { distanceKm: 2 } });
+
+    const matched = sessionForEachActivity([long, strides], [run({ id: "a1", distance_m: 9_800 }), run({ id: "a2", distance_m: 2_100 })]);
+
+    expect(matched.get("a1")?.id).toBe("long");
+    expect(matched.get("a2")?.id).toBe("strides");
+  });
+
+  it("leaves an activity no run claims out", () => {
+    const matched = sessionForEachActivity([session()], [run({ id: "ride", activity_type: "cycling" })]);
+
+    expect(matched.has("ride")).toBe(false);
   });
 });

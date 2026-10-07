@@ -151,13 +151,22 @@ export function matchDay(session: SessionLike | null, activities: ActivityLike[]
   return { ...base, pct, state: "upcoming" };
 }
 
+export type DaySession = SessionLike & {
+  label: string;
+  targetDistanceM: number | null;
+  targetDurationS: number | null;
+  completion: Completion;
+};
+
 export interface DayView {
   date: string;
   isToday: boolean;
   isPast: boolean;
-  session: (SessionLike & { label: string; targetDistanceM: number | null; targetDurationS: number | null }) | null;
+  /** Every planned session on the day, each with its own completion. */
+  sessions: DaySession[];
   activities: ActivityLike[];
-  completion: Completion;
+  /** Runs no planned session claimed: "unplanned" when there are any, otherwise "rest". */
+  unplanned: Completion;
 }
 
 export interface WeekTotals {
@@ -168,35 +177,98 @@ export interface WeekTotals {
   sessionsCompleted: number;
 }
 
-export function buildDay(date: string, session: SessionLike | null, activities: ActivityLike[], todayIso: string): DayView {
+/** How far an activity is from what a session asked for, as a fraction of the ask. */
+function mismatch(session: SessionLike, activity: ActivityLike): number {
+  const tDist = targetDistanceM(session.prescription);
+  if (tDist && tDist > 0) return Math.abs(distOf(activity) - tDist) / tDist;
+  const tDur = targetDurationS(session.prescription);
+  if (tDur && tDur > 0) return Math.abs(timeOf(activity) - tDur) / tDur;
+  return 1;
+}
+
+/**
+ * Splits a day's activities between its planned runs.
+ *
+ * A lone planned run takes every activity that counts towards it, as it always
+ * has. With several, each activity goes to at most one run and each run gets at
+ * most one activity, pairing closest-to-the-ask first. Whatever no run claims is
+ * left over, to be shown as an unplanned run.
+ */
+export function assignActivities(
+  sessions: SessionLike[],
+  activities: ActivityLike[],
+): { bySession: Map<string, ActivityLike[]>; leftover: ActivityLike[] } {
+  const bySession = new Map<string, ActivityLike[]>(sessions.map((s) => [s.id, []]));
+
+  if (sessions.length === 1) {
+    const only = sessions[0]!;
+    bySession.set(only.id, activities.filter((a) => countsToward(a, only.type)));
+    return { bySession, leftover: activities.filter((a) => !countsToward(a, only.type)) };
+  }
+
+  const pairs = sessions.flatMap((session) =>
+    activities.filter((a) => countsToward(a, session.type)).map((activity) => ({ session, activity, cost: mismatch(session, activity) })),
+  );
+  pairs.sort((a, b) => a.cost - b.cost);
+
+  const claimed = new Set<ActivityLike>();
+  for (const { session, activity } of pairs) {
+    if (claimed.has(activity) || bySession.get(session.id)!.length > 0) continue;
+    bySession.get(session.id)!.push(activity);
+    claimed.add(activity);
+  }
+  return { bySession, leftover: activities.filter((a) => !claimed.has(a)) };
+}
+
+/** Groups sessions by date, in the order given. */
+export function sessionsByDate<T extends { date: string }>(sessions: T[]): Map<string, T[]> {
+  const byDate = new Map<string, T[]>();
+  for (const s of sessions) byDate.set(s.date, [...(byDate.get(s.date) ?? []), s]);
+  return byDate;
+}
+
+/** For one day: which planned session each of its activities counts towards. */
+export function sessionForEachActivity(sessions: SessionLike[], activities: ActivityLike[]): Map<string, SessionLike> {
+  const matched = new Map<string, SessionLike>();
+  const { bySession } = assignActivities(sessions, activities);
+  for (const session of sessions) {
+    for (const a of bySession.get(session.id) ?? []) if (a.id) matched.set(a.id, session);
+  }
+  return matched;
+}
+
+export function buildDay(date: string, sessions: SessionLike[], activities: ActivityLike[], todayIso: string): DayView {
   const dayActivities = activities.filter((a) => a.date === date);
-  const completion = matchDay(session, dayActivities, todayIso);
+  const { bySession, leftover } = assignActivities(sessions, dayActivities);
 
   return {
     date,
     isToday: date === todayIso,
     isPast: date < todayIso,
-    session: session
-      ? {
-          ...session,
-          label: sessionLabel(session.type, session.prescription),
-          targetDistanceM: targetDistanceM(session.prescription),
-          targetDurationS: targetDurationS(session.prescription),
-        }
-      : null,
+    sessions: sessions.map((session) => ({
+      ...session,
+      label: sessionLabel(session.type, session.prescription),
+      targetDistanceM: targetDistanceM(session.prescription),
+      targetDurationS: targetDurationS(session.prescription),
+      completion: matchDay(session, bySession.get(session.id) ?? [], todayIso),
+    })),
     activities: dayActivities,
-    completion,
+    unplanned: matchDay(null, leftover, todayIso),
   };
 }
 
 export function totalsFor(days: DayView[]): WeekTotals {
   return days.reduce<WeekTotals>(
     (acc, d) => {
-      acc.plannedDistanceM += d.session?.targetDistanceM ?? 0;
-      acc.actualDistanceM += d.completion.actualDistanceM;
-      acc.actualMovingTimeS += d.completion.actualMovingTimeS;
-      if (d.session) acc.sessionsPlanned++;
-      if (d.completion.state === "completed") acc.sessionsCompleted++;
+      for (const s of d.sessions) {
+        acc.plannedDistanceM += s.targetDistanceM ?? 0;
+        acc.actualDistanceM += s.completion.actualDistanceM;
+        acc.actualMovingTimeS += s.completion.actualMovingTimeS;
+        acc.sessionsPlanned++;
+        if (s.completion.state === "completed") acc.sessionsCompleted++;
+      }
+      acc.actualDistanceM += d.unplanned.actualDistanceM;
+      acc.actualMovingTimeS += d.unplanned.actualMovingTimeS;
       return acc;
     },
     { plannedDistanceM: 0, actualDistanceM: 0, actualMovingTimeS: 0, sessionsPlanned: 0, sessionsCompleted: 0 },

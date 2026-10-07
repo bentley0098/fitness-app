@@ -1,40 +1,17 @@
 import { mondayOf } from "./planMeta";
 
 // Pure planning for "drag this session onto that day". No I/O — the endpoint
-// executes whatever `steps` comes back with, which is what makes the awkward
-// part (see SENTINEL_DATE below) testable without a database.
+// executes whatever `steps` comes back with. A day can hold any number of
+// sessions, so a move only ever relocates the one session.
 
 export interface MovableSession {
   id: string;
   date: string;
 }
 
-/**
- * A parking date used to keep a swap from ever producing two sessions on one
- * calendar date.
- *
- * `db` is a supabase-js client, so there is no transaction here. The obvious
- * two-step swap — A takes B's date, then B takes A's — leaves a duplicate if
- * the process dies between the writes, and a duplicate is the one state this
- * codebase genuinely cannot cope with:
- *
- *   - buildWeek() joins with `.find()`, so the second row is invisible: one
- *     session simply vanishes from the week.
- *   - older code looked sessions up with `.eq("date", …).maybeSingle()`,
- *     which throws on two or more rows — poisoning that date for good.
- *   - plan_sessions.date carries no unique constraint, so nothing stops it.
- *
- * Parking A out of the way first means an interrupted swap leaves a session
- * *missing* (it shows as a rest day, and the sentinel date is trivial to grep
- * for) rather than duplicated. A recoverable glitch instead of a broken
- * invariant.
- */
-export const SENTINEL_DATE = "9999-12-31";
-
 export interface MoveStep {
   id: string;
   date: string;
-  /** False for the parking write, which is bookkeeping rather than a result. */
   final: boolean;
 }
 
@@ -52,26 +29,19 @@ export interface MovePlan {
   noop: boolean;
   steps: MoveStep[];
   moved: MoveOutcome | null;
-  /** The session displaced by the move, if the target day was occupied. */
-  swapped: MoveOutcome | null;
 }
 
 function refuse(error: string): MovePlan {
-  return { ok: false, error, noop: false, steps: [], moved: null, swapped: null };
+  return { ok: false, error, noop: false, steps: [], moved: null };
 }
 
 /**
  * Work out the writes that move `session` onto `toDate`.
  *
- * `occupant` is whatever already sits on `toDate` (null if the day is free).
  * Moves are confined to the session's own ISO week: that keeps every week's
  * planned volume exactly as it was.
  */
-export function planSessionMove(
-  session: MovableSession,
-  toDate: string,
-  occupant: MovableSession | null,
-): MovePlan {
+export function planSessionMove(session: MovableSession, toDate: string): MovePlan {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(toDate)) return refuse(`Not a calendar date: ${toDate}`);
 
   if (mondayOf(session.date) !== mondayOf(toDate)) {
@@ -79,33 +49,14 @@ export function planSessionMove(
   }
 
   if (toDate === session.date) {
-    return { ok: true, noop: true, steps: [], moved: null, swapped: null };
-  }
-
-  const moved: MoveOutcome = { id: session.id, from: session.date, to: toDate };
-
-  // Dropping onto a day that's already taken swaps the two, so the week keeps
-  // one session per day.
-  if (occupant && occupant.id !== session.id) {
-    return {
-      ok: true,
-      noop: false,
-      steps: [
-        { id: session.id, date: SENTINEL_DATE, final: false },
-        { id: occupant.id, date: session.date, final: true },
-        { id: session.id, date: toDate, final: true },
-      ],
-      moved,
-      swapped: { id: occupant.id, from: occupant.date, to: session.date },
-    };
+    return { ok: true, noop: true, steps: [], moved: null };
   }
 
   return {
     ok: true,
     noop: false,
     steps: [{ id: session.id, date: toDate, final: true }],
-    moved,
-    swapped: null,
+    moved: { id: session.id, from: session.date, to: toDate },
   };
 }
 
