@@ -17,7 +17,7 @@
 
         <ul class="space-y-2">
           <li v-for="(r, i) in data.rows" :key="i" class="rounded-card border border-line bg-surface p-3.5 shadow-card">
-            <div class="text-xs font-semibold uppercase tracking-wide text-subtle">{{ formatDate(r.date, SHORT) }}</div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-subtle">{{ formatDate(r.date, SHORT) }}<template v-if="r.toDate"> → {{ formatDate(r.toDate, SHORT) }}</template></div>
             <p class="mt-1 text-sm text-subtle line-through">{{ r.before ?? "—" }}</p>
             <p class="text-sm font-semibold text-ink">{{ r.after ?? "—" }}</p>
           </li>

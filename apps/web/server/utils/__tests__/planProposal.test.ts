@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planApply, snapshotOperations, type PlannerSession } from "../planProposal";
+import { SENTINEL_DATE, planApply, snapshotOperations, type OperationRequest, type PlannerSession } from "../planProposal";
 
 // Week of Mon 2026-09-21 .. Sun 2026-09-27.
 const WED = "2026-09-23";
@@ -90,8 +90,79 @@ describe("update operation fields", () => {
       {
         kind: "update",
         id: "s-thu",
-        fields: { type: "long_run", phase: "base", prescription: { distanceKm: 10, pace: "6:00" }, cap: {}, revision: 2 },
+        final: true,
+        fields: { type: "long_run", phase: "base", prescription: { distanceKm: 10, pace: "6:00" }, cap: {}, revision: 2, date: "2026-09-24" },
       },
     ]);
+  });
+});
+
+function plan(sessions: PlannerSession[], requests: OperationRequest[]) {
+  const ops = snapshotOperations(sessions, requests);
+  if (!ops.ok) throw new Error(ops.message);
+  return planApply(sessions, ops.operations);
+}
+
+describe("move operations", () => {
+  const wed = session({ id: "s-wed", date: WED, prescription: { distanceKm: 5 } });
+  const fri = session({ id: "s-fri", date: FRI, prescription: { distanceKm: 8 } });
+
+  it("moves a session into another week and reports volume for both weeks", () => {
+    const result = plan([wed, fri], [{ kind: "move", sessionId: "s-wed", toDate: "2026-09-30" }]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.after.find((s) => s.id === "s-wed")?.date).toBe("2026-09-30");
+    expect(result.volume).toEqual([
+      { weekStart: "2026-09-21", beforeM: 13_000, afterM: 8_000 },
+      { weekStart: "2026-09-28", beforeM: 0, afterM: 5_000 },
+    ]);
+  });
+
+  it("swaps with whatever already sits on the target day", () => {
+    const result = plan([wed, fri], [{ kind: "move", sessionId: "s-wed", toDate: FRI }]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.after.find((s) => s.id === "s-wed")?.date).toBe(FRI);
+    expect(result.after.find((s) => s.id === "s-fri")?.date).toBe(WED);
+    expect(result.after.map((s) => s.revision)).toEqual([2, 2]);
+  });
+
+  it("never leaves two sessions on one date while the writes run", () => {
+    const result = plan([wed, fri], [{ kind: "move", sessionId: "s-wed", toDate: FRI }]);
+    if (!result.ok) throw new Error(result.message);
+
+    const dates = new Map([wed, fri].map((s) => [s.id, s.date]));
+    for (const w of result.writes) {
+      if (w.fields.date) dates.set(w.id, w.fields.date);
+      const real = [...dates.values()].filter((d) => d !== SENTINEL_DATE);
+      expect(new Set(real).size).toBe(real.length);
+    }
+    expect(Object.fromEntries(dates)).toEqual({ "s-wed": FRI, "s-fri": WED });
+  });
+
+  it("bumps a session's revision once when it is both changed and moved", () => {
+    const result = plan([wed], [
+      { kind: "update", sessionId: "s-wed", patch: { prescription: { distanceKm: 6 } } },
+      { kind: "move", sessionId: "s-wed", toDate: FRI },
+    ]);
+
+    expect(result.ok && result.after[0]).toMatchObject({ date: FRI, revision: 2, prescription: { distanceKm: 6 } });
+  });
+
+  it("refuses a target that is not a calendar date", () => {
+    const result = plan([wed], [{ kind: "move", sessionId: "s-wed", toDate: "next friday" }]);
+
+    expect(result).toMatchObject({ ok: false, reason: "invalid" });
+  });
+
+  it("refuses two sessions moved onto the same day", () => {
+    const result = plan([wed, fri], [
+      { kind: "move", sessionId: "s-wed", toDate: "2026-09-27" },
+      { kind: "move", sessionId: "s-fri", toDate: "2026-09-27" },
+    ]);
+
+    expect(result).toMatchObject({ ok: false, reason: "conflict" });
   });
 });

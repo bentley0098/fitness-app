@@ -124,34 +124,37 @@ export async function approveProposal(id: string): Promise<void> {
   }
 
   const originals = new Map(sessions.map((s) => [s.id, s]));
-  const written: string[] = [];
+  const written = new Set<string>();
   for (const write of plan.writes) {
-    const { error } = await db
-      .from("plan_sessions")
-      .update({ ...write.fields, changed_because: proposal.rationale, updated_at: new Date().toISOString() })
-      .eq("id", write.id);
+    // Parking writes only move the date; the final write carries the new state.
+    const fields = write.final
+      ? { ...write.fields, changed_because: proposal.rationale, updated_at: new Date().toISOString() }
+      : write.fields;
+    const { error } = await db.from("plan_sessions").update(fields).eq("id", write.id);
+    written.add(write.id);
     if (error) {
       // No transactions on this client — undo what landed so a week is never half-changed.
-      for (const doneId of [...written].reverse()) {
+      for (const doneId of written) {
         const o = originals.get(doneId)!;
         const { error: undoErr } = await db
           .from("plan_sessions")
-          .update({ type: o.type, phase: o.phase, prescription: o.prescription, cap: o.cap, revision: o.revision })
+          .update({ type: o.type, phase: o.phase, prescription: o.prescription, cap: o.cap, revision: o.revision, date: o.date })
           .eq("id", doneId);
         if (undoErr) console.error(`[approveProposal] rollback of ${doneId} failed: ${undoErr.message}`);
       }
       throw new Error(`Apply failed and was rolled back: ${error.message}`);
     }
-    written.push(write.id);
   }
 
-  const audit = plan.writes.map((w) => ({
-    plan_session_id: w.id,
-    engine_verdict: proposal.engine_verdict,
-    proposed: { kind: "proposal", proposalId: id, fields: w.fields },
-    applied: true,
-    rationale: proposal.rationale,
-  }));
+  const audit = plan.writes
+    .filter((w) => w.final)
+    .map((w) => ({
+      plan_session_id: w.id,
+      engine_verdict: proposal.engine_verdict,
+      proposed: { kind: "proposal", proposalId: id, fields: w.fields },
+      applied: true,
+      rationale: proposal.rationale,
+    }));
   const { error: auditErr } = await db.from("plan_revisions").insert(audit);
   if (auditErr) console.error(`[approveProposal] audit insert failed: ${auditErr.message}`);
 
@@ -165,7 +168,7 @@ export interface ProposalView {
   statusNote: string | null;
   engineVerdict: string;
   createdAt: string;
-  rows: { kind: string; date: string; before: string | null; after: string | null }[];
+  rows: { kind: string; date: string; toDate: string | null; before: string | null; after: string | null }[];
   volume: WeekVolume[];
 }
 
@@ -177,16 +180,29 @@ export async function viewProposal(id: string): Promise<ProposalView> {
   const byId = new Map(sessions.map((s) => [s.id, s]));
   const afterById = plan.ok ? new Map(plan.after.map((s) => [s.id, s])) : new Map<string, PlannerSession>();
 
-  const rows = proposal.operations.map((op) => {
+  const rows: ProposalView["rows"] = proposal.operations.map((op) => {
     const before = byId.get(op.sessionId);
     const after = afterById.get(op.sessionId);
     return {
       kind: op.kind,
       date: op.sessionDate,
+      toDate: op.kind === "move" ? op.toDate : null,
       before: before ? sessionLabel(before.type, before.prescription) : null,
       after: after ? sessionLabel(after.type, after.prescription) : null,
     };
   });
+
+  // A move onto an occupied day swaps the other session; show it rather than
+  // let it change without a row.
+  if (plan.ok) {
+    const named = new Set(proposal.operations.map((op) => op.sessionId));
+    for (const s of plan.after) {
+      const was = byId.get(s.id);
+      if (!was || named.has(s.id) || was.date === s.date) continue;
+      const label = sessionLabel(s.type, s.prescription);
+      rows.push({ kind: "swap", date: was.date, toDate: s.date, before: label, after: label });
+    }
+  }
 
   return {
     id: proposal.id,

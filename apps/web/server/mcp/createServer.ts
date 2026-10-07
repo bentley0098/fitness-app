@@ -3,6 +3,7 @@ import { evaluate } from "@fitness/engine";
 import { z } from "zod";
 import { db } from "../utils/db";
 import { applyRevision, proposeRevision } from "../utils/planRevisions";
+import type { OperationRequest } from "../utils/planProposal";
 import { ProposalError, createProposal, loadPlannerSessions } from "../utils/planProposals";
 import { addDaysIso, isoDate } from "../utils/dates";
 import { loadTrainingWindow } from "../utils/trainingData";
@@ -16,6 +17,16 @@ function textResult(value: unknown) {
 // each call's data as fresh as the moment it was invoked.
 export function createMcpServer(appOrigin = ""): McpServer {
   const server = new McpServer({ name: "adaptive-training", version: "1.0.0" });
+
+  async function proposeAndReport(requests: OperationRequest[], rationale: string) {
+    try {
+      const created = await createProposal(requests, rationale);
+      return textResult({ ...created, link: `${appOrigin}/proposal/${created.proposalId}` });
+    } catch (e) {
+      if (e instanceof ProposalError) return { content: [{ type: "text" as const, text: e.message }], isError: true };
+      throw e;
+    }
+  }
 
   server.registerTool(
     "get_training_window",
@@ -71,15 +82,21 @@ export function createMcpServer(appOrigin = ""): McpServer {
         rationale: z.string().describe("Human-readable reason, shown on the proposal screen"),
       },
     },
-    async ({ sessionId, patch, rationale }) => {
-      try {
-        const created = await createProposal([{ kind: "update", sessionId, patch }], rationale);
-        return textResult({ ...created, link: `${appOrigin}/proposal/${created.proposalId}` });
-      } catch (e) {
-        if (e instanceof ProposalError) return { content: [{ type: "text" as const, text: e.message }], isError: true };
-        throw e;
-      }
+    async ({ sessionId, patch, rationale }) => proposeAndReport([{ kind: "update", sessionId, patch }], rationale),
+  );
+
+  server.registerTool(
+    "propose_move",
+    {
+      description:
+        "Propose moving a planned session to another date, in this week or any other. If the target day already has a session, the two swap. This never changes the plan: it stores a proposal the runner approves or rejects in the app. Returns a link and the weekly volume before and after for each affected week.",
+      inputSchema: {
+        sessionId: z.string(),
+        toDate: z.string().describe("ISO date to move the session to"),
+        rationale: z.string().describe("Human-readable reason, shown on the proposal screen"),
+      },
     },
+    async ({ sessionId, toDate, rationale }) => proposeAndReport([{ kind: "move", sessionId, toDate }], rationale),
   );
 
   server.registerTool(
