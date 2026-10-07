@@ -2,7 +2,10 @@
   <div class="space-y-4 p-4">
     <header>
       <h1 class="text-xl font-bold text-ink">Strength</h1>
-      <p class="mt-0.5 text-sm text-subtle">Gym and physio routines</p>
+      <p class="mt-0.5 text-sm text-subtle">
+        Gym and physio routines ·
+        <NuxtLink to="/strength/history" class="font-medium text-accent-700">History</NuxtLink>
+      </p>
     </header>
 
     <NuxtLink

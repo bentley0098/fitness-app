@@ -239,3 +239,11 @@ export function planGroupSets(setCounts: number[], superset: boolean): PlannedSe
 export function restForRound(restSeconds: (number | null)[]): number {
   return Math.max(...restSeconds.map((r) => r ?? DEFAULT_REST_SECONDS));
 }
+
+/** What a session amounts to, for a history row: sets done, and exercises with at least one. */
+export function summariseSession(exercises: { setsLogged: number }[]): { setsDone: number; exercisesDone: number } {
+  return {
+    setsDone: exercises.reduce((sum, e) => sum + e.setsLogged, 0),
+    exercisesDone: exercises.filter((e) => e.setsLogged > 0).length,
+  };
+}

@@ -9,6 +9,7 @@ import {
   planGroupSets,
   restForRound,
   retarget,
+  summariseSession,
   targetLabel,
   type Exercise,
   type Kind,
@@ -445,4 +446,41 @@ export async function swapExercise(logId: string, entryId: string, choice: Exerc
     })
     .eq("id", entryId);
   if (upErr) throw new Error(`Swap failed: ${upErr.message}`);
+}
+
+export interface LogSummary {
+  id: string;
+  date: string;
+  kind: Kind;
+  templateName: string;
+  status: "in_progress" | "finished";
+  setsDone: number;
+  exercisesDone: number;
+}
+
+/** Sessions newest first, finished or not, so one left unfinished can still be found. */
+export async function listLogs(limit = 50): Promise<LogSummary[]> {
+  const { data, error } = await db
+    .from("strength_logs")
+    .select("id, date, kind, template_name, status, started_at, strength_log_exercises(strength_log_sets(set_index))")
+    .order("date", { ascending: false })
+    .order("started_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(`Load sessions failed: ${error.message}`);
+
+  return (data ?? []).map((row: Record<string, any>) => ({
+    id: row.id,
+    date: row.date,
+    kind: row.kind === "physio" ? "physio" : "gym",
+    templateName: row.template_name,
+    status: row.status === "finished" ? "finished" : "in_progress",
+    ...summariseSession((row.strength_log_exercises ?? []).map((e: any) => ({ setsLogged: (e.strength_log_sets ?? []).length }))),
+  }));
+}
+
+/** Deletes a session and, through the cascade, its exercises and sets. */
+export async function deleteLog(id: string): Promise<void> {
+  const { data, error } = await db.from("strength_logs").delete().eq("id", id).select("id");
+  if (error) throw new Error(`Delete session failed: ${error.message}`);
+  if (!data?.length) throw new LogError("No such session.", 404);
 }

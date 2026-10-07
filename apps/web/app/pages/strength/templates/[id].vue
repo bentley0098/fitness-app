@@ -10,6 +10,10 @@
 
     <AsyncState :pending="pending" :error="error" title="Couldn't load this template" :skeletons="4">
       <template v-if="data">
+        <label class="flex items-center justify-between gap-3 text-xs text-subtle">
+          Date
+          <input v-model="date" type="date" :max="today" class="rounded-lg border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
+        </label>
         <button
           type="button"
           class="block w-full rounded-card bg-accent-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
@@ -54,6 +58,9 @@ import { ref } from "vue";
 const route = useRoute();
 const { data, pending, error } = await useFetch(() => `/api/strength/templates/${route.params.id}`);
 
+// Defaults to today; pick an earlier day to log a session you forgot at the time.
+const today = new Date().toLocaleDateString("en-CA");
+const date = ref(today);
 const starting = ref(false);
 const startError = ref<string | null>(null);
 
@@ -63,7 +70,7 @@ async function start() {
   try {
     const { id } = await $fetch<{ id: string }>("/api/strength/logs", {
       method: "POST",
-      body: { templateId: String(route.params.id) },
+      body: { templateId: String(route.params.id), date: date.value || today },
     });
     await navigateTo(`/strength/log/${id}`);
   } catch (e) {

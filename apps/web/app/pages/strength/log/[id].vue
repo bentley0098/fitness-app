@@ -109,6 +109,8 @@
 
         <p v-if="saveError" class="text-xs text-verdict-regress" role="alert">{{ saveError }}</p>
 
+        <button type="button" class="text-xs font-medium text-verdict-regress" @click="remove">Delete session</button>
+
         <div
           v-if="data.status === 'in_progress'"
           class="fixed inset-x-0 bottom-0 z-30 space-y-2 border-t border-line bg-surface/95 p-3 backdrop-blur"
@@ -239,6 +241,17 @@ async function swap(exercise: Exercise, choice: Choice) {
 async function addExercise(choice: Choice) {
   await change(() => $fetch(`/api/strength/logs/${id}/exercises`, { method: "POST", body: choice }), "Couldn't add that exercise.");
   if (!saveError.value) adding.value = false;
+}
+
+async function remove() {
+  if (!window.confirm("Delete this session and everything logged in it?")) return;
+  saveError.value = null;
+  try {
+    await $fetch(`/api/strength/logs/${id}`, { method: "DELETE" });
+    await navigateTo("/strength/history");
+  } catch (e) {
+    saveError.value = describe(e, "Couldn't delete the session.");
+  }
 }
 
 async function finish() {

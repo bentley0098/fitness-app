@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_REST_SECONDS, buildRows, exerciseKey, latestPerExercise, planGroupSets, restForRound, retarget, findExercise, groupSlots, previousSession, targetLabel, validateSlots, type Exercise, type TemplateSlot } from "../strength";
+import { DEFAULT_REST_SECONDS, buildRows, summariseSession, exerciseKey, latestPerExercise, planGroupSets, restForRound, retarget, findExercise, groupSlots, previousSession, targetLabel, validateSlots, type Exercise, type TemplateSlot } from "../strength";
 import { SEED_EXERCISES, SEED_TEMPLATES, planSeed } from "../strengthSeed";
 
 function exercise(over: Partial<Exercise> & { id: string; name: string }): Exercise {
@@ -316,5 +316,15 @@ describe("restForRound", () => {
     expect(restForRound([null])).toBe(DEFAULT_REST_SECONDS);
     expect(restForRound([60, null])).toBe(DEFAULT_REST_SECONDS);
     expect(DEFAULT_REST_SECONDS).toBe(90);
+  });
+});
+
+describe("summariseSession", () => {
+  it("counts the sets that were done and the exercises they were spread over", () => {
+    expect(summariseSession([{ setsLogged: 3 }, { setsLogged: 0 }, { setsLogged: 2 }])).toEqual({ setsDone: 5, exercisesDone: 2 });
+  });
+
+  it("is empty for a session with nothing logged", () => {
+    expect(summariseSession([])).toEqual({ setsDone: 0, exercisesDone: 0 });
   });
 });
