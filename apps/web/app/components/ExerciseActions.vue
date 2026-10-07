@@ -3,10 +3,11 @@
     <button type="button" @click="$emit('add-set')">+ Set</button>
     <button type="button" :disabled="rows <= 1" class="disabled:opacity-40" @click="$emit('remove-set')">− Set</button>
     <button type="button" @click="$emit('swap')">Swap exercise</button>
+    <button type="button" class="text-verdict-regress" @click="$emit('skip')">Skip exercise</button>
   </div>
 </template>
 
 <script setup lang="ts">
 defineProps<{ rows: number }>();
-defineEmits<{ "add-set": []; "remove-set": []; swap: [] }>();
+defineEmits<{ "add-set": []; "remove-set": []; swap: []; skip: [] }>();
 </script>
