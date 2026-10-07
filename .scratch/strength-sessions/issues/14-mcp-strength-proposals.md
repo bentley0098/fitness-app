@@ -4,10 +4,12 @@
 
 **Blocked by:** 03, 10
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Each new operation can be proposed alone and inside a whole-week proposal
-- [ ] The proposal screen shows strength rows without a distance
-- [ ] Approving applies all operations together or none; a stale or conflicting proposal is refused as for runs
-- [ ] Nothing changes the plan until approved in the app
-- [ ] Planner tests cover the new operations, atomic apply and refusals
+- [x] Each new operation can be proposed alone and inside a whole-week proposal
+- [x] The proposal screen shows strength rows without a distance
+- [x] Approving applies all operations together or none; a stale or conflicting proposal is refused as for runs
+- [x] Nothing changes the plan until approved in the app
+- [x] Planner tests cover the new operations, atomic apply and refusals
+
+Note: the executor (library writes with undo, then session writes) is type-checked and built but has not been exercised against a database; the planner rules it relies on are covered by tests.

@@ -1,18 +1,22 @@
 import { evaluate } from "@fitness/engine";
 import { db } from "./db";
 import { isoDate } from "./dates";
-import { sessionLabel, type Prescription } from "./planLabels";
+import { isStrengthType, sessionLabel, type Prescription } from "./planLabels";
 import {
   isExpired,
+  isSessionOperation,
   planApply,
   selectSuperseded,
   snapshotOperations,
+  type LibraryWrite,
   type Operation,
   type ApplyPlan,
   type OperationRequest,
+  type PlanLibrary,
   type PlannerSession,
   type WeekVolume,
 } from "./planProposal";
+import { exerciseKey } from "./strength";
 import { loadTrainingWindow } from "./trainingData";
 
 // The I/O half of proposals. All decisions live in planProposal.ts; this
@@ -63,19 +67,76 @@ export async function loadPlannerSessions(): Promise<PlannerSession[]> {
   return (data ?? []).map(toPlannerSession);
 }
 
+/** The exercises and templates a proposal is judged against. */
+export async function loadPlanLibrary(): Promise<PlanLibrary> {
+  const [{ data: exercises, error: exErr }, { data: templates, error: tErr }, { data: slots, error: sErr }] = await Promise.all([
+    db.from("exercises").select("name, measure"),
+    db.from("strength_templates").select("id, name, kind, updated_at"),
+    db.from("strength_template_slots").select("template_id"),
+  ]);
+  // The library is the strength tables'. Until they exist, a proposal about runs
+  // is judged against an empty one rather than failing.
+  if (exErr || tErr || sErr) {
+    console.warn(`[proposals] could not load the strength library: ${(exErr ?? tErr ?? sErr)!.message}`);
+    return { exercises: [], templates: [] };
+  }
+  const counts = new Map<string, number>();
+  for (const slot of slots ?? []) counts.set(slot.template_id, (counts.get(slot.template_id) ?? 0) + 1);
+  return {
+    exercises: (exercises ?? []).map((e) => ({ name: e.name, measure: e.measure === "hold" ? "hold" : "reps" })),
+    templates: (templates ?? []).map((t) => ({
+      id: t.id,
+      name: t.name,
+      kind: t.kind === "physio" ? "physio" : "gym",
+      updatedAt: t.updated_at,
+      exerciseCount: counts.get(t.id) ?? 0,
+    })),
+  };
+}
+
+export interface PreviewRow {
+  kind: string;
+  /** Null for a change to the exercise library or a template, which has no day. */
+  date: string | null;
+  toDate: string | null;
+  before: string | null;
+  after: string | null;
+}
+
 export interface ProposalPreview {
-  rows: { kind: string; date: string; toDate: string | null; before: string | null; after: string | null }[];
+  rows: PreviewRow[];
   volume: WeekVolume[];
 }
 
+const countLabel = (name: string, n: number) => `${name} · ${n} ${n === 1 ? "exercise" : "exercises"}`;
+
 /** Before/after per operation, plus weekly volume, as the proposal screen shows it. */
-function buildPreview(operations: Operation[], sessions: PlannerSession[], plan: Extract<ApplyPlan, { ok: true }>): ProposalPreview {
+function buildPreview(operations: Operation[], sessions: PlannerSession[], plan: Extract<ApplyPlan, { ok: true }>, library: PlanLibrary): ProposalPreview {
   const byId = new Map(sessions.map((s) => [s.id, s]));
   const afterById = new Map(plan.after.map((s) => [s.id, s]));
 
-  const rows: ProposalPreview["rows"] = operations.map((op) => {
+  const rows: PreviewRow[] = operations.map((op): PreviewRow => {
     if (op.kind === "add") {
       return { kind: "add", date: op.date, toDate: null, before: null, after: sessionLabel(op.type, op.prescription) };
+    }
+    if (op.kind === "addExercise") {
+      return { kind: "addExercise", date: null, toDate: null, before: null, after: `New exercise: ${op.name.trim()}` };
+    }
+    if (op.kind === "createTemplate") {
+      return { kind: "createTemplate", date: null, toDate: null, before: null, after: `New ${op.templateKind} template: ${countLabel(op.name.trim(), op.slots.length)}` };
+    }
+    if (op.kind === "updateTemplate") {
+      const current = library.templates.find((t) => t.id === op.templateId);
+      const write = plan.libraryWrites.find((w) => w.kind === "updateTemplate" && w.id === op.templateId);
+      const slots = write?.kind === "updateTemplate" ? write.slots : undefined;
+      const name = (op.name ?? current?.name ?? "Template").trim();
+      return {
+        kind: "updateTemplate",
+        date: null,
+        toDate: null,
+        before: current ? countLabel(current.name, current.exerciseCount) : null,
+        after: countLabel(name, slots?.length ?? current?.exerciseCount ?? 0),
+      };
     }
     const before = byId.get(op.sessionId);
     const after = afterById.get(op.sessionId);
@@ -98,14 +159,14 @@ export interface CreatedProposal {
 }
 
 export async function createProposal(requests: OperationRequest[], rationale: string): Promise<CreatedProposal> {
-  const sessions = await loadPlannerSessions();
+  const [sessions, library] = await Promise.all([loadPlannerSessions(), loadPlanLibrary()]);
 
-  const snapshot = snapshotOperations(sessions, requests);
+  const snapshot = snapshotOperations(sessions, requests, library);
   if (!snapshot.ok) throw new ProposalError(snapshot.message, 400);
 
   // Run it now too, so a proposal that could never apply is refused up front
   // and the volume shown to Claude and to me is the real before/after.
-  const plan = planApply(sessions, snapshot.operations);
+  const plan = planApply(sessions, snapshot.operations, library);
   if (!plan.ok) throw new ProposalError(plan.message, 400);
 
   const evaluation = evaluate(await loadTrainingWindow(), isoDate(new Date()));
@@ -118,7 +179,7 @@ export async function createProposal(requests: OperationRequest[], rationale: st
       engine_verdict: evaluation.verdict,
       // Kept so a decided proposal still reads as it did when it was made,
       // rather than being re-judged against a plan that has moved on.
-      preview: buildPreview(snapshot.operations, sessions, plan),
+      preview: buildPreview(snapshot.operations, sessions, plan, library),
     })
     .select("id")
     .single();
@@ -185,8 +246,8 @@ export async function approveProposal(id: string): Promise<void> {
     throw new ProposalError("This proposal has expired — a session it touches is already in the past.", 409);
   }
 
-  const sessions = await loadPlannerSessions();
-  const plan = planApply(sessions, proposal.operations);
+  const [sessions, library] = await Promise.all([loadPlannerSessions(), loadPlanLibrary()]);
+  const plan = planApply(sessions, proposal.operations, library);
 
   if (!plan.ok) {
     // A stale plan means I changed something after this was proposed. Nothing
@@ -215,7 +276,24 @@ export async function approveProposal(id: string): Promise<void> {
       const { error } = await query;
       if (error) console.error(`[approveProposal] rollback of ${doneId} failed: ${error.message}`);
     }
+    // Library changes come off last: sessions pointing at a new template are gone by now.
+    for (const undoStep of [...undo].reverse()) {
+      try {
+        await undoStep();
+      } catch (e) {
+        console.error(`[approveProposal] rollback of a library change failed: ${(e as Error).message}`);
+      }
+    }
   }
+
+  const undo: (() => Promise<void>)[] = [];
+  try {
+    await applyLibraryWrites(plan.libraryWrites, undo);
+  } catch (e) {
+    await rollback();
+    throw new Error(`Apply failed and was rolled back: ${(e as Error).message}`);
+  }
+  const templateIds = await templateIdsByKey();
 
   const audit: Record<string, unknown>[] = [];
   const auditFor = (planSessionId: string, fields: unknown) => ({
@@ -235,7 +313,7 @@ export async function approveProposal(id: string): Promise<void> {
       ({ error } = await db.from("plan_sessions").delete().eq("id", write.id));
       if (!error) deleted.push(write.id);
     } else if (write.kind === "insert") {
-      const row = { ...write.fields, changed_because: proposal.rationale, updated_at: now() };
+      const row = { ...write.fields, prescription: withTemplateId(write.fields.type, write.fields.prescription, templateIds), changed_because: proposal.rationale, updated_at: now() };
       const res = await db.from("plan_sessions").insert(row).select("id").single();
       error = res.error ?? (res.data ? null : { message: "Insert returned no row." });
       if (res.data) {
@@ -245,7 +323,16 @@ export async function approveProposal(id: string): Promise<void> {
     } else {
       touched.add(write.id);
       // Parking writes only move the date; the final write carries the new state.
-      const fields = write.final ? { ...write.fields, changed_because: proposal.rationale, updated_at: now() } : write.fields;
+      const fields = write.final
+        ? {
+            ...write.fields,
+            ...(write.fields.prescription
+              ? { prescription: withTemplateId(write.fields.type ?? originals.get(write.id)?.type ?? "", write.fields.prescription, templateIds) }
+              : {}),
+            changed_because: proposal.rationale,
+            updated_at: now(),
+          }
+        : write.fields;
       ({ error } = await db.from("plan_sessions").update(fields).eq("id", write.id));
       if (!error && write.final) audit.push(auditFor(write.id, write.fields));
     }
@@ -291,7 +378,7 @@ export async function pendingProposalIdsBySession(): Promise<Map<string, string[
   for (const p of (data ?? []) as ProposalRow[]) {
     if (effectiveStatus(p) !== "pending") continue;
     for (const op of p.operations) {
-      if (op.kind === "add") continue;
+      if (!isSessionOperation(op)) continue;
       bySession.set(op.sessionId, [...(bySession.get(op.sessionId) ?? []), p.id]);
     }
   }
@@ -315,7 +402,7 @@ export interface ProposalView {
   statusNote: string | null;
   engineVerdict: string;
   createdAt: string;
-  rows: { kind: string; date: string; toDate: string | null; before: string | null; after: string | null }[];
+  rows: PreviewRow[];
   volume: WeekVolume[];
 }
 
@@ -329,9 +416,9 @@ export async function viewProposal(id: string): Promise<ProposalView> {
 
   let preview: ProposalPreview = proposal.preview ?? { rows: [], volume: [] };
   if (proposal.status === "pending") {
-    const sessions = await loadPlannerSessions();
-    const plan = planApply(sessions, proposal.operations);
-    if (plan.ok) preview = buildPreview(proposal.operations, sessions, plan);
+    const [sessions, library] = await Promise.all([loadPlannerSessions(), loadPlanLibrary()]);
+    const plan = planApply(sessions, proposal.operations, library);
+    if (plan.ok) preview = buildPreview(proposal.operations, sessions, plan, library);
   }
 
   return {
@@ -344,4 +431,103 @@ export async function viewProposal(id: string): Promise<ProposalView> {
     rows: preview.rows,
     volume: preview.volume,
   };
+}
+
+async function templateIdsByKey(): Promise<Map<string, string>> {
+  const { data, error } = await db.from("strength_templates").select("id, name");
+  if (error) throw new Error(`Load templates failed: ${error.message}`);
+  return new Map((data ?? []).map((t) => [exerciseKey(t.name), t.id as string]));
+}
+
+/** Points a strength session at its template by id; the name it was proposed with is kept alongside. */
+function withTemplateId(type: string, prescription: Prescription, templateIds: Map<string, string>): Prescription {
+  if (!isStrengthType(type) || typeof prescription.templateName !== "string") return prescription;
+  const templateId = templateIds.get(exerciseKey(prescription.templateName));
+  return templateId ? { ...prescription, templateId } : prescription;
+}
+
+/**
+ * Runs the library changes, registering how to take each back. There are no
+ * transactions on this client, so approval undoes them if anything after fails.
+ */
+async function applyLibraryWrites(writes: LibraryWrite[], undo: (() => Promise<void>)[]): Promise<void> {
+  const exerciseIds = async () => {
+    const { data, error } = await db.from("exercises").select("id, name");
+    if (error) throw new Error(`Load exercises failed: ${error.message}`);
+    return new Map((data ?? []).map((e) => [exerciseKey(e.name), e.id as string]));
+  };
+  const slotRows = async (templateId: string, slots: { exercise: string; sets: number; repsMin: number | null; repsMax: number | null; holdSeconds: number | null; restSeconds: number | null; supersetGroup: number | null; note: string | null }[]) => {
+    const ids = await exerciseIds();
+    return slots.map((slot, position) => {
+      const exerciseId = ids.get(exerciseKey(slot.exercise));
+      if (!exerciseId) throw new Error(`No exercise called ${slot.exercise}.`);
+      return {
+        template_id: templateId,
+        position,
+        exercise_id: exerciseId,
+        sets: slot.sets,
+        reps_min: slot.repsMin,
+        reps_max: slot.repsMax,
+        hold_seconds: slot.holdSeconds,
+        rest_seconds: slot.restSeconds,
+        superset_group: slot.supersetGroup,
+        note: slot.note,
+      };
+    });
+  };
+
+  for (const write of writes) {
+    if (write.kind === "addExercise") {
+      const { data, error } = await db
+        .from("exercises")
+        .insert({ name: write.name, name_key: exerciseKey(write.name), measure: write.measure, per_side: write.perSide, note: write.note, rest_seconds: write.restSeconds })
+        .select("id")
+        .single();
+      if (error) throw new Error(`Add exercise ${write.name} failed: ${error.message}`);
+      undo.push(async () => {
+        await db.from("exercises").delete().eq("id", data.id);
+      });
+    } else if (write.kind === "createTemplate") {
+      const { data, error } = await db
+        .from("strength_templates")
+        .insert({ name: write.name, name_key: exerciseKey(write.name), kind: write.templateKind })
+        .select("id")
+        .single();
+      if (error) throw new Error(`Create template ${write.name} failed: ${error.message}`);
+      // Deleting the template takes its slots with it.
+      undo.push(async () => {
+        await db.from("strength_templates").delete().eq("id", data.id);
+      });
+      const { error: slotErr } = await db.from("strength_template_slots").insert(await slotRows(data.id, write.slots));
+      if (slotErr) throw new Error(`Create template ${write.name} failed: ${slotErr.message}`);
+    } else {
+      const { data: old, error } = await db.from("strength_templates").select("*").eq("id", write.id).single();
+      if (error) throw new Error(`Load template failed: ${error.message}`);
+      const { data: oldSlots, error: oldErr } = await db.from("strength_template_slots").select("*").eq("template_id", write.id);
+      if (oldErr) throw new Error(`Load template failed: ${oldErr.message}`);
+
+      undo.push(async () => {
+        await db.from("strength_templates").update({ name: old.name, name_key: old.name_key, updated_at: old.updated_at }).eq("id", write.id);
+        if (write.slots) {
+          await db.from("strength_template_slots").delete().eq("template_id", write.id);
+          if (oldSlots?.length) await db.from("strength_template_slots").insert(oldSlots);
+        }
+      });
+
+      const fields: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (write.name !== undefined) {
+        fields.name = write.name;
+        fields.name_key = exerciseKey(write.name);
+      }
+      const { error: upErr } = await db.from("strength_templates").update(fields).eq("id", write.id);
+      if (upErr) throw new Error(`Update template failed: ${upErr.message}`);
+
+      if (write.slots) {
+        const { error: delErr } = await db.from("strength_template_slots").delete().eq("template_id", write.id);
+        if (delErr) throw new Error(`Update template failed: ${delErr.message}`);
+        const { error: insErr } = await db.from("strength_template_slots").insert(await slotRows(write.id, write.slots));
+        if (insErr) throw new Error(`Update template failed: ${insErr.message}`);
+      }
+    }
+  }
 }

@@ -2,12 +2,32 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { evaluate } from "@fitness/engine";
 import { z } from "zod";
 import type { OperationRequest } from "../utils/planProposal";
-import { ProposalError, createProposal, loadPlannerSessions, pendingProposalIdsBySession } from "../utils/planProposals";
+import { ProposalError, createProposal, loadPlanLibrary, loadPlannerSessions, pendingProposalIdsBySession } from "../utils/planProposals";
 import { addDaysIso, isoDate } from "../utils/dates";
+import { mondayOf } from "../utils/planMeta";
 import { loadTrainingWindow } from "../utils/trainingData";
 import { listLogs, loadStrengthHistory, loadStrengthLogsLike } from "../utils/strengthLogs";
 import { listTemplates, loadExercises, viewTemplate } from "../utils/strengthStore";
 import { isStrengthType } from "../utils/planLabels";
+
+const slotSchema = z.object({
+  exercise: z.string().describe("Exercise name, from get_exercises or one added in the same proposal"),
+  sets: z.number().int().min(1),
+  repsMin: z.number().int().min(1).nullish().describe("For reps exercises: reps per set, or the bottom of a range"),
+  repsMax: z.number().int().min(1).nullish().describe("Top of a rep range; leave out for a fixed number"),
+  holdSeconds: z.number().int().min(1).nullish().describe("For timed holds: seconds per set"),
+  restSeconds: z.number().int().min(0).nullish(),
+  supersetGroup: z.number().int().nullish().describe("Consecutive slots sharing a number are a superset"),
+  note: z.string().nullish(),
+});
+
+const exerciseOpFields = {
+  name: z.string(),
+  measure: z.enum(["reps", "hold"]).describe("reps (with an optional weight the runner enters) or a timed hold"),
+  perSide: z.boolean().optional(),
+  note: z.string().nullish(),
+  restSeconds: z.number().int().min(0).nullish(),
+};
 
 function textResult(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
@@ -186,10 +206,77 @@ export function createMcpServer(appOrigin = ""): McpServer {
   );
 
   server.registerTool(
+    "propose_add_exercise",
+    {
+      description:
+        "Propose adding an exercise to the library, so templates can use it. This never changes anything: the runner approves it in the app. Templates carry no weight, so only name how it is counted: reps (the runner enters any weight themself) or a timed hold.",
+      inputSchema: { ...exerciseOpFields, rationale: z.string().describe("Human-readable reason, shown on the proposal screen") },
+    },
+    async ({ rationale, ...exercise }) => proposeAndReport([{ kind: "addExercise", ...exercise }], rationale),
+  );
+
+  server.registerTool(
+    "propose_create_template",
+    {
+      description:
+        "Propose a new strength template (kind gym or physio): an ordered list of exercises with sets and reps or hold time. Templates never carry a weight, and you must not propose loads: the runner chooses their own weights in the gym. Every exercise must already exist (get_exercises) or be added in the same proposal with propose_week. Consecutive slots sharing a supersetGroup form a superset.",
+      inputSchema: {
+        name: z.string(),
+        templateKind: z.enum(["gym", "physio"]),
+        slots: z.array(slotSchema).min(1),
+        rationale: z.string().describe("Human-readable reason, shown on the proposal screen"),
+      },
+    },
+    async ({ rationale, ...template }) => proposeAndReport([{ kind: "createTemplate", ...template }], rationale),
+  );
+
+  server.registerTool(
+    "propose_update_template",
+    {
+      description:
+        "Propose changing a template: rename it and/or replace its whole list of exercises (send every slot you want it to have). Refused if the runner has edited the template since you read it. Never propose weights.",
+      inputSchema: {
+        templateId: z.string().describe("From get_templates"),
+        name: z.string().optional(),
+        slots: z.array(slotSchema).min(1).optional(),
+        rationale: z.string().describe("Human-readable reason, shown on the proposal screen"),
+      },
+    },
+    async ({ rationale, ...template }) => proposeAndReport([{ kind: "updateTemplate", ...template }], rationale),
+  );
+
+  server.registerTool(
+    "propose_add_strength_session",
+    {
+      description:
+        "Propose scheduling a strength session from an existing template on a date. A date can already hold other sessions, including a run. This never changes the plan: the runner approves it in the app. The session's type follows the template's kind. To schedule from a template that does not exist yet, use propose_week with a createTemplate and an add operation instead.",
+      inputSchema: {
+        date: z.string().describe("ISO date for the session"),
+        templateName: z.string().describe("A template name from get_templates"),
+        phase: z.string().optional().describe("Defaults to the phase of that week's runs"),
+        rationale: z.string().describe("Human-readable reason, shown on the proposal screen"),
+      },
+    },
+    async ({ date, templateName, phase, rationale }) => {
+      const [library, sessions] = await Promise.all([loadPlanLibrary(), loadPlannerSessions()]);
+      const template = library.templates.find((t) => t.name.trim().toLowerCase() === templateName.trim().toLowerCase());
+      if (!template) {
+        return { content: [{ type: "text" as const, text: `There is no template called "${templateName}".` }], isError: true };
+      }
+      const week = mondayOf(date);
+      const weekPhase = sessions.find((x) => mondayOf(x.date) === week && !x.type.startsWith("strength_"))?.phase;
+      return proposeAndReport(
+        [{ kind: "add", date, phase: phase ?? weekPhase ?? "base", type: template.kind === "gym" ? "strength_gym" : "strength_physio", prescription: { templateName: template.name } }],
+        rationale,
+      );
+    },
+  );
+
+  server.registerTool(
     "propose_week",
     {
       description:
-        "Propose several changes at once as ONE proposal, so a reworked week needs a single approval. Each operation is an update (sessionId + patch), move (sessionId + toDate), add (a new session) or remove (sessionId). Everything applies together or not at all. This never changes the plan: the runner approves or rejects the whole proposal in the app. Returns a link and the weekly volume before and after for each affected week.",
+        "Propose several changes at once as ONE proposal, so a reworked week needs a single approval. Each operation is an update (sessionId + patch), move (sessionId + toDate), add (a new session) or remove (sessionId), or a change to the strength library: addExercise, createTemplate (templateKind + slots) or updateTemplate (templateId). A strength session is an add with type strength_gym or strength_physio and prescription {templateName}, which can name a template created in the same proposal; its operations are applied in order, library changes first. Never propose weights. Everything applies together or not at all. This never changes the plan: the runner approves or rejects the whole proposal in the app. Returns a link and the weekly volume before and after for each affected week.",
       inputSchema: {
         operations: z
           .array(
@@ -215,6 +302,9 @@ export function createMcpServer(appOrigin = ""): McpServer {
                 cap: z.record(z.unknown()).optional(),
               }),
               z.object({ kind: z.literal("remove"), sessionId: z.string() }),
+              z.object({ kind: z.literal("addExercise"), ...exerciseOpFields }),
+              z.object({ kind: z.literal("createTemplate"), name: z.string(), templateKind: z.enum(["gym", "physio"]), slots: z.array(slotSchema).min(1) }),
+              z.object({ kind: z.literal("updateTemplate"), templateId: z.string(), name: z.string().optional(), slots: z.array(slotSchema).min(1).optional() }),
             ]),
           )
           .min(1),
