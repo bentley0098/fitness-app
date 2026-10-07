@@ -22,7 +22,7 @@ import {
   type LoggedSet,
   type TemplateSlot,
 } from "./strength";
-import type { StrengthLogLike } from "./planCompletion";
+import { durationAndHr, matchStrengthActivities, type StrengthLogLike } from "./planCompletion";
 import { loadExercises } from "./strengthStore";
 
 // The I/O half of the strength log. The rules (pre-fill, rows) live in
@@ -186,6 +186,8 @@ export interface LogView {
   templateName: string;
   planSessionId: string | null;
   status: "in_progress" | "finished";
+  /** Duration and heart rate from the watch, when it recorded a strength activity that day. */
+  garmin: { durationS: number | null; avgHr: number | null } | null;
   groups: {
     superset: boolean;
     /** The order the group's sets are done in, and the rest to take after each. */
@@ -202,6 +204,22 @@ export interface LogView {
       rows: LogRow[];
     }[];
   }[];
+}
+
+/** Duration and heart rate from the Garmin strength activity on the log's day, if there is one. */
+async function loadGarminForLog(log: Record<string, any>): Promise<LogView["garmin"]> {
+  const [{ data: activities, error }, { data: sameDay, error: logErr }] = await Promise.all([
+    db.from("activities").select("id, date, activity_type, moving_time_s, avg_hr").eq("date", log.date),
+    db.from("strength_logs").select("id, date, started_at").eq("date", log.date),
+  ]);
+  // Watch data is a nicety on this screen; never let it stop the session loading.
+  if (error || logErr) return null;
+
+  const matched = matchStrengthActivities(
+    (sameDay ?? []).map((l) => ({ id: l.id, date: l.date, startedAt: l.started_at })),
+    (activities ?? []) as any[],
+  ).get(log.id);
+  return matched ? durationAndHr(matched) : null;
 }
 
 export async function viewLog(id: string): Promise<LogView> {
@@ -221,7 +239,10 @@ export async function viewLog(id: string): Promise<LogView> {
     : { data: [], error: null };
   if (sErr) throw new Error(`Load session failed: ${sErr.message}`);
 
-  const previous = await loadPreviousSets([...new Set(entries.map((e) => e.exercise_id))], id);
+  const [previous, garmin] = await Promise.all([
+    loadPreviousSets([...new Set(entries.map((e) => e.exercise_id))], id),
+    loadGarminForLog(log),
+  ]);
   const byId = new Map(library.map((e) => [e.id, e]));
 
   const slots = entries.map(toLogSlot);
@@ -232,6 +253,7 @@ export async function viewLog(id: string): Promise<LogView> {
     templateName: log.template_name,
     planSessionId: log.plan_session_id ?? null,
     status: log.status === "finished" ? "finished" : "in_progress",
+    garmin,
     groups: groupSlots(slots).map((group) => {
       const exercises = group.slots.map((slot) => {
         const exercise = byId.get(slot.exerciseId);

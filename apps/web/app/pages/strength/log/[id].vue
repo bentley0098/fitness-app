@@ -9,6 +9,12 @@
         {{ formatDate(data.date, { weekday: "long", day: "numeric", month: "short" }) }}
         <template v-if="data.status === 'finished'"> · Finished</template>
       </p>
+      <p v-if="data?.garmin" class="tnum mt-0.5 text-xs text-subtle">
+        <template v-if="data.garmin.durationS">{{ formatDuration(data.garmin.durationS) }}</template>
+        <template v-if="data.garmin.durationS && data.garmin.avgHr"> · </template>
+        <template v-if="data.garmin.avgHr">avg HR {{ Math.round(data.garmin.avgHr) }}</template>
+        <span class="text-subtle"> · from your watch</span>
+      </p>
     </header>
 
     <AsyncState :pending="pending" :error="error" title="Couldn't load this session" :skeletons="4">

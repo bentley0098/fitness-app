@@ -32,6 +32,9 @@
               {{ data.week.sessionsCompleted }} of {{ data.week.sessionsPlanned }} sessions ·
               {{ formatDuration(data.week.actualMovingTimeS) }} moving
             </p>
+            <p v-if="data.week.strengthPlanned" class="mt-0.5 text-xs text-subtle">
+              Strength {{ data.week.strengthCompleted }} of {{ data.week.strengthPlanned }} sessions
+            </p>
           </div>
         </div>
 

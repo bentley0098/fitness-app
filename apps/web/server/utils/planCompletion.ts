@@ -344,3 +344,33 @@ export function totalsFor(days: DayView[]): WeekTotals {
     },
   );
 }
+
+/** Garmin activity types that count as a strength session. */
+export const STRENGTH_ACTIVITY_TYPES: ReadonlySet<string> = new Set(["strength_training"]);
+
+/**
+ * Pairs strength logs with the Garmin strength activity from the same day, for
+ * duration and heart rate only. Completion never depends on this: a session
+ * with no watch data is just as done. The earliest log of the day takes the
+ * first activity, and each activity goes to one log only.
+ */
+export function matchStrengthActivities(
+  logs: { id: string; date: string; startedAt: string }[],
+  activities: ActivityLike[],
+): Map<string, ActivityLike> {
+  const matched = new Map<string, ActivityLike>();
+  const used = new Set<ActivityLike>();
+  const ordered = [...logs].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+
+  for (const log of ordered) {
+    const activity = activities.find((a) => a.date === log.date && STRENGTH_ACTIVITY_TYPES.has(typeOf(a)) && !used.has(a));
+    if (!activity) continue;
+    used.add(activity);
+    matched.set(log.id, activity);
+  }
+  return matched;
+}
+
+export function durationAndHr(activity: ActivityLike): { durationS: number | null; avgHr: number | null } {
+  return { durationS: timeOf(activity) || null, avgHr: hrOf(activity) };
+}

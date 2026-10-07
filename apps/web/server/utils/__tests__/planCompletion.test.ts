@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDay, countsToward, matchDay, sessionForEachActivity, totalsFor, type SessionLike, type StrengthLogLike } from "../planCompletion";
+import { buildDay, countsToward, matchDay, matchStrengthActivities, sessionForEachActivity, totalsFor, type SessionLike, type StrengthLogLike } from "../planCompletion";
 
 const TODAY = "2026-09-22";
 
@@ -293,5 +293,32 @@ describe("planned strength sessions", () => {
     const matched = sessionForEachActivity([gymA, session()], [run({ id: "a1" })]);
 
     expect(matched.get("a1")?.id).toBe("s1");
+  });
+});
+
+describe("matchStrengthActivities", () => {
+  const logOn = (id: string, date = TODAY) => ({ id, date, startedAt: `${date}T0${id.slice(-1)}:00:00Z` });
+  const lift = (over: Record<string, unknown> = {}) => ({ id: "g1", date: TODAY, activity_type: "strength_training", moving_time_s: 3000, avg_hr: 118, ...over });
+
+  it("gives a session the Garmin strength activity from its day", () => {
+    const matched = matchStrengthActivities([logOn("log1")], [lift()]);
+
+    expect(matched.get("log1")).toMatchObject({ id: "g1", moving_time_s: 3000, avg_hr: 118 });
+  });
+
+  it("ignores runs and activities from other days", () => {
+    const matched = matchStrengthActivities([logOn("log1")], [run(), lift({ id: "g2", date: "2026-09-21" })]);
+
+    expect(matched.size).toBe(0);
+  });
+
+  it("gives each activity to one session only, earliest session first", () => {
+    const matched = matchStrengthActivities([logOn("log2"), logOn("log1")], [lift()]);
+
+    expect([...matched.keys()]).toEqual(["log1"]);
+  });
+
+  it("gives nothing to a session when the watch wasn't worn", () => {
+    expect(matchStrengthActivities([logOn("log1")], []).size).toBe(0);
   });
 });

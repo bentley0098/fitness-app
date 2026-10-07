@@ -4,9 +4,9 @@
 
 **Blocked by:** 10
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The week summary shows strength sessions done of planned
-- [ ] Run km, run session counts and the engine verdict are unchanged by strength sessions
-- [ ] A same-day Garmin strength activity shows its duration and heart rate on the session
-- [ ] A session with no matching activity still completes and displays without those values
+- [x] The week summary shows strength sessions done of planned
+- [x] Run km, run session counts and the engine verdict are unchanged by strength sessions
+- [x] A same-day Garmin strength activity shows its duration and heart rate on the session
+- [x] A session with no matching activity still completes and displays without those values
