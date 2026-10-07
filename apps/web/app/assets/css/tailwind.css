@@ -66,17 +66,17 @@
 .dark {
   color-scheme: dark;
 
-  --c-canvas: 2 6 23; /* slate-950 */
-  --c-surface: 15 23 42; /* slate-900 */
-  --c-raised: 30 41 59; /* slate-800 */
-  --c-hero: 30 41 59;
+  --c-canvas: 18 18 18; /* neutral grey */
+  --c-surface: 28 28 28;
+  --c-raised: 42 42 42;
+  --c-hero: 44 44 44;
 
-  --c-line: 30 41 59;
-  --c-line-strong: 51 65 85; /* slate-700 */
+  --c-line: 44 44 44;
+  --c-line-strong: 64 64 64;
 
-  --c-ink: 241 245 249; /* slate-100 */
-  --c-ink-muted: 148 163 184; /* slate-400 */
-  --c-ink-subtle: 116 130 153;
+  --c-ink: 245 245 245;
+  --c-ink-muted: 163 163 163;
+  --c-ink-subtle: 130 130 130;
 
   --c-accent-50: 6 46 36;
   --c-accent-100: 6 78 59;
@@ -93,7 +93,7 @@
   --c-regress-soft: 67 20 7;
   --c-stop: 248 113 113;
   --c-stop-soft: 69 10 10;
-  --c-on-solid: 2 6 23; /* verdict fills are bright here, so text on them goes dark */
+  --c-on-solid: 18 18 18; /* verdict fills are bright here, so text on them goes dark */
 }
 
 html {
