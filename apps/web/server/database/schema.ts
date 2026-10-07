@@ -92,7 +92,7 @@ export const planSessions = pgTable("plan_sessions", {
   type: text("type").notNull(),
   prescription: jsonb("prescription").notNull(),
   cap: jsonb("cap").notNull(),
-  status: text("status").notNull().default("planned"), // planned | pending | completed | skipped
+  status: text("status").notNull().default("planned"), // planned | completed | skipped
   revision: integer("revision").notNull().default(1),
   changedBecause: text("changed_because"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

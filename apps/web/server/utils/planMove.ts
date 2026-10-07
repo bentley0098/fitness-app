@@ -20,9 +20,8 @@ export interface MovableSession {
  *
  *   - buildWeek() joins with `.find()`, so the second row is invisible: one
  *     session simply vanishes from the week.
- *   - proposeRevision() looks sessions up with `.eq("date", …).maybeSingle()`,
- *     which throws on two or more rows — poisoning that date for the MCP tool
- *     and the weekly cron from then on.
+ *   - older code looked sessions up with `.eq("date", …).maybeSingle()`,
+ *     which throws on two or more rows — poisoning that date for good.
  *   - plan_sessions.date carries no unique constraint, so nothing stops it.
  *
  * Parking A out of the way first means an interrupted swap leaves a session
@@ -66,8 +65,7 @@ function refuse(error: string): MovePlan {
  *
  * `occupant` is whatever already sits on `toDate` (null if the day is free).
  * Moves are confined to the session's own ISO week: that keeps every week's
- * planned volume exactly as it was, which is why this path doesn't need the
- * engine's weekly-volume clamp the way proposeRevision() does.
+ * planned volume exactly as it was.
  */
 export function planSessionMove(
   session: MovableSession,

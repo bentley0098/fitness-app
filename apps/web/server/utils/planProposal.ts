@@ -1,4 +1,5 @@
 import { mondayOf } from "./planMeta";
+import { SENTINEL_DATE } from "./planMove";
 import { targetDistanceM, type Prescription } from "./planLabels";
 
 // Pure planning for proposals: what applying a set of operations would do to
@@ -62,13 +63,8 @@ export type PlanFailure = { ok: false; reason: "invalid" | "missing" | "stale" |
 
 export type SnapshotResult = { ok: true; operations: Operation[] } | PlanFailure;
 
-/**
- * Parking date for sessions mid-move. `db` has no transactions, and plan code
- * cannot cope with two sessions on one date (see planMove.ts), so a moved
- * session is parked here first. An interrupted run leaves a session missing
- * from its day rather than duplicated.
- */
-export const SENTINEL_DATE = "9999-12-31";
+// Parking date for sessions mid-move; see planMove.ts for why it exists.
+export { SENTINEL_DATE };
 
 /**
  * A row change for the executor, run in order. Non-final writes are
