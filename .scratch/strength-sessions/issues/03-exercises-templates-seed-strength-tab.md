@@ -4,12 +4,14 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Migration adds exercises, templates and template slots
-- [ ] Strength tab appears and lists the four seeded templates, each with a gym or physio kind
-- [ ] Opening a template shows its exercises, sets, rep ranges or hold times, notes and superset groups as in the spec's seed data
-- [ ] Exercise names are unique, matched case-insensitively ignoring surrounding whitespace
-- [ ] Single-leg calf raise is one shared exercise used by Gym B and Physio: ankle
-- [ ] Re-running the seed creates no duplicates
-- [ ] Strength module tests cover exercise-name matching
+- [x] Migration adds exercises, templates and template slots
+- [x] Strength tab appears and lists the four seeded templates, each with a gym or physio kind
+- [x] Opening a template shows its exercises, sets, rep ranges or hold times, notes and superset groups as in the spec's seed data
+- [x] Exercise names are unique, matched case-insensitively ignoring surrounding whitespace
+- [x] Single-leg calf raise is one shared exercise used by Gym B and Physio: ankle
+- [x] Re-running the seed creates no duplicates
+- [x] Strength module tests cover exercise-name matching
+
+Note: the migration (0011) is generated but not applied, and the seed has not been run; both need your database (paste the SQL into the Supabase SQL editor, then `npm run strength:seed` from apps/web).

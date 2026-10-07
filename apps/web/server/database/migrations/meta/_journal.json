@@ -78,6 +78,13 @@
       "when": 1791381407633,
       "tag": "0010_petite_major_mapleleaf",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791384106154,
+      "tag": "0011_fresh_logan",
+      "breakpoints": true
     }
   ]
 }

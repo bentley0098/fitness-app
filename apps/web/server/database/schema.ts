@@ -132,6 +132,52 @@ export const planProposals = pgTable("plan_proposals", {
   decidedAt: timestamp("decided_at", { withTimezone: true }),
 });
 
+// Strength work. An exercise is a movement with a stable identity, so its
+// history can be followed across sessions and templates. name_key is the
+// case- and whitespace-insensitive form of the name (see exerciseKey in
+// server/utils/strength.ts) and is what uniqueness is enforced on.
+export const exercises = pgTable("exercises", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  nameKey: text("name_key").notNull().unique(),
+  measure: text("measure").notNull().default("reps"), // reps | hold
+  perSide: boolean("per_side").notNull().default(false),
+  note: text("note"),
+  restSeconds: integer("rest_seconds"), // null = the app default
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// A reusable, named, ordered list of exercises a strength session is started
+// from. Carries sets and reps (or hold time) per exercise, never a weight —
+// weight always comes from the last logged set.
+export const strengthTemplates = pgTable("strength_templates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  nameKey: text("name_key").notNull().unique(),
+  kind: text("kind").notNull(), // gym | physio
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const strengthTemplateSlots = pgTable("strength_template_slots", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  templateId: uuid("template_id")
+    .notNull()
+    .references(() => strengthTemplates.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  exerciseId: uuid("exercise_id")
+    .notNull()
+    .references(() => exercises.id),
+  sets: integer("sets").notNull(),
+  repsMin: integer("reps_min"),
+  repsMax: integer("reps_max"),
+  holdSeconds: integer("hold_seconds"),
+  restSeconds: integer("rest_seconds"),
+  // Consecutive slots sharing a number are a superset.
+  supersetGroup: integer("superset_group"),
+  note: text("note"),
+});
+
 // Not part of the spec's core tables — infrastructure for the Garmin
 // ingestion mechanism (Section 3 update). Single row, keyed by a fixed id,
 // holding the OAuth token pair so the sync cron never needs an interactive
