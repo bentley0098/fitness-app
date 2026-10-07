@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_REST_SECONDS, buildRows, exerciseSeries, summariseSession, exerciseKey, latestPerExercise, planGroupSets, restForRound, retarget, findExercise, groupSlots, previousSession, targetLabel, validateSlots, type Exercise, type TemplateSlot } from "../strength";
+import { DEFAULT_REST_SECONDS, buildRows, linksToSupersetGroups, supersetGroupsToLinks, exerciseSeries, summariseSession, exerciseKey, latestPerExercise, planGroupSets, restForRound, retarget, findExercise, groupSlots, previousSession, targetLabel, validateSlots, type Exercise, type TemplateSlot } from "../strength";
 import { SEED_EXERCISES, SEED_TEMPLATES, planSeed } from "../strengthSeed";
 
 function exercise(over: Partial<Exercise> & { id: string; name: string }): Exercise {
@@ -364,5 +364,26 @@ describe("exerciseSeries", () => {
 
   it("skips a session where nothing was logged for the exercise", () => {
     expect(exerciseSeries([session("2026-10-05")], "reps").points).toEqual([]);
+  });
+});
+
+describe("superset links", () => {
+  it("turns 'superset with the next exercise' toggles into group numbers", () => {
+    // squat | bench + row | curl + ext + raise | calf
+    expect(linksToSupersetGroups([false, true, false, true, true, false, false])).toEqual([null, 1, 1, 2, 2, 2, null]);
+  });
+
+  it("ignores a link on the last exercise, which has nothing to pair with", () => {
+    expect(linksToSupersetGroups([false, true])).toEqual([null, null]);
+  });
+
+  it("turns group numbers back into links", () => {
+    expect(supersetGroupsToLinks([null, 1, 1, 2, 2, 2, null])).toEqual([false, true, false, true, true, false, false]);
+  });
+
+  it("round-trips", () => {
+    const links = [true, false, false, true, true, false];
+
+    expect(supersetGroupsToLinks(linksToSupersetGroups(links))).toEqual(links);
   });
 });

@@ -4,10 +4,10 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A new template can be created and then appears in the Strength tab list
-- [ ] An existing template can be edited and the changes persist
-- [ ] Exercises can be picked from the library or created by typing a new name with the duplicate check
-- [ ] Superset groups can be set only across consecutive slots
-- [ ] Templates hold no target weight
+- [x] A new template can be created and then appears in the Strength tab list
+- [x] An existing template can be edited and the changes persist
+- [x] Exercises can be picked from the library or created by typing a new name with the duplicate check
+- [x] Superset groups can be set only across consecutive slots
+- [x] Templates hold no target weight

@@ -38,6 +38,8 @@
           </NuxtLink>
         </section>
 
+        <NuxtLink to="/strength/templates/new" class="block text-center text-xs font-medium text-accent-700">+ New template</NuxtLink>
+
         <p v-if="!data.templates.length" class="text-sm text-subtle">
           No templates yet. Run <code>npm run strength:seed</code> to add your routines.
         </p>

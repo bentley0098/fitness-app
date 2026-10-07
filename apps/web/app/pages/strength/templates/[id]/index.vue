@@ -4,7 +4,10 @@
       <NuxtLink to="/strength" class="mb-1 inline-flex items-center gap-1 text-xs font-medium text-accent-700">
         ← Strength
       </NuxtLink>
-      <h1 class="text-xl font-bold text-ink">{{ data?.name ?? "Template" }}</h1>
+      <div class="flex items-baseline justify-between gap-3">
+        <h1 class="text-xl font-bold text-ink">{{ data?.name ?? "Template" }}</h1>
+        <NuxtLink :to="`/strength/templates/${route.params.id}/edit`" class="text-xs font-medium text-accent-700">Edit</NuxtLink>
+      </div>
       <p v-if="data" class="mt-0.5 text-sm capitalize text-subtle">{{ data.kind }}</p>
     </header>
 

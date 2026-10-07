@@ -138,5 +138,5 @@ Planned strength sessions appear in the week view next to runs, have their own l
 - The plan import script's header comment already lists "easy run + gym" for Monday and Friday, with Tuesday as swim and Thursday as full rest. This spec realises that pattern, with Gym A on Monday and Gym B on Friday.
 - Monday heavy legs share a day with the Monday easy run, and from week 16 with the quality run. This is a deliberate choice by the runner and can be adjusted by dragging sessions or via proposals.
 - Single-leg calf raise appears in both Gym B and the ankle physio routine. Seed it as one shared exercise so its history is continuous, and note that the weight is optional.
-- ADR 0001 (strength sets are entered by hand) records the departure from the spec's "no manual entry" principle for strength only. ADR 0002 has been offered but not yet written: a date holds many planned sessions and a move no longer swaps.
+- ADR 0001 (strength sets are entered by hand) records the departure from the spec's "no manual entry" principle for strength only. ADR 0002 records that a date holds many planned sessions and a move no longer swaps.
 - Domain terms are in `CONTEXT.md` (strength session, kind, gym, physio, template, exercise, measure, set, superset, strength log).

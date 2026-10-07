@@ -277,3 +277,30 @@ export function exerciseSeries(sessions: PastSession[], measure: Measure): Exerc
   if (weighted.length > 0) return { metric: "weight", unit: "kg", points: weighted };
   return { metric: "reps", unit: "reps", points: pointsOf((s) => s.reps) };
 }
+
+/**
+ * The editor's "superset with the next exercise" toggles as group numbers:
+ * runs of linked exercises share a number, counted from 1. A link on the last
+ * exercise pairs it with nothing, so it is ignored.
+ */
+export function linksToSupersetGroups(linkNext: boolean[]): (number | null)[] {
+  const groups: (number | null)[] = linkNext.map(() => null);
+  let next = 0;
+  let open = false;
+  linkNext.forEach((link, i) => {
+    const hasNext = i < linkNext.length - 1;
+    if (link && hasNext) {
+      if (!open) next++;
+      groups[i] = next;
+      groups[i + 1] = next;
+      open = true;
+    } else {
+      open = false;
+    }
+  });
+  return groups;
+}
+
+export function supersetGroupsToLinks(groups: (number | null)[]): boolean[] {
+  return groups.map((group, i) => group != null && groups[i + 1] === group);
+}
