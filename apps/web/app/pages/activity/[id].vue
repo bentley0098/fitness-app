@@ -2,7 +2,7 @@
   <div class="space-y-4 p-4">
     <header>
       <NuxtLink :to="backTo" class="mb-2 inline-flex items-center gap-1 text-xs font-medium text-accent-700">
-        <AppIcon name="chevron-left" :size="14" /> {{ planned ? "Plan" : "Activity" }}
+        <AppIcon name="chevron-left" :size="14" /> {{ backTo === "/activity" ? "Activity" : "Plan" }}
       </NuxtLink>
     </header>
 
@@ -178,7 +178,12 @@ const {
 const pending = computed(() => (planned.value ? plannedPending.value : activityPending.value));
 const error = computed(() => (planned.value ? plannedError.value : activityError.value));
 
-const backTo = computed(() => (planned.value && plannedData.value ? `/plan/week?week=${plannedData.value.weekStart}` : planned.value ? "/plan" : "/activity"));
+const backTo = computed(() => {
+  if (planned.value) return plannedData.value ? `/plan/week?week=${plannedData.value.weekStart}` : "/plan";
+  // Arrived from the week page: go back to the week this activity is in.
+  if (route.query.from === "plan" && data.value) return `/plan/week?week=${data.value.date}`;
+  return "/activity";
+});
 
 const { starting, startError, start } = useStartSession(() => ({
   id: plannedData.value?.id ?? "",
