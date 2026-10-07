@@ -130,6 +130,45 @@ export function createMcpServer(appOrigin = ""): McpServer {
   );
 
   server.registerTool(
+    "propose_week",
+    {
+      description:
+        "Propose several changes at once as ONE proposal, so a reworked week needs a single approval. Each operation is an update (sessionId + patch), move (sessionId + toDate), add (a new session) or remove (sessionId). Everything applies together or not at all. This never changes the plan: the runner approves or rejects the whole proposal in the app. Returns a link and the weekly volume before and after for each affected week.",
+      inputSchema: {
+        operations: z
+          .array(
+            z.discriminatedUnion("kind", [
+              z.object({
+                kind: z.literal("update"),
+                sessionId: z.string(),
+                patch: z.object({
+                  type: z.string().optional(),
+                  phase: z.string().optional(),
+                  prescription: z.record(z.unknown()).optional(),
+                  cap: z.record(z.unknown()).optional(),
+                  notes: z.string().optional(),
+                }),
+              }),
+              z.object({ kind: z.literal("move"), sessionId: z.string(), toDate: z.string() }),
+              z.object({
+                kind: z.literal("add"),
+                date: z.string(),
+                phase: z.string(),
+                type: z.string(),
+                prescription: z.record(z.unknown()),
+                cap: z.record(z.unknown()).optional(),
+              }),
+              z.object({ kind: z.literal("remove"), sessionId: z.string() }),
+            ]),
+          )
+          .min(1),
+        rationale: z.string().describe("Human-readable reason for the whole change, shown on the proposal screen"),
+      },
+    },
+    async ({ operations, rationale }) => proposeAndReport(operations, rationale),
+  );
+
+  server.registerTool(
     "get_current_plan",
     { description: "The most recently dated plan_sessions row, whatever its status." },
     async () => {

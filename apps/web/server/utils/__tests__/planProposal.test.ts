@@ -225,3 +225,36 @@ describe("add and remove operations", () => {
     expect(result).toMatchObject({ ok: false, reason: "conflict" });
   });
 });
+
+describe("a whole week as one proposal", () => {
+  const mon = session({ id: "s-mon", date: "2026-09-21", prescription: { distanceKm: 5 } });
+  const wed = session({ id: "s-wed", date: WED, prescription: { distanceKm: 6 } });
+  const sun = session({ id: "s-sun", date: "2026-09-27", prescription: { distanceKm: 16 } });
+
+  it("applies mixed operations together and reports the week's volume once", () => {
+    const result = plan([mon, wed, sun], [
+      { kind: "move", sessionId: "s-wed", toDate: "2026-09-21" },
+      { kind: "move", sessionId: "s-mon", toDate: WED },
+      { kind: "update", sessionId: "s-sun", patch: { prescription: { distanceKm: 18 } } },
+      { kind: "add", date: FRI, phase: "base", type: "easy_run", prescription: { distanceKm: 4 } },
+    ]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.after.find((s) => s.id === "s-mon")?.date).toBe(WED);
+    expect(result.after.find((s) => s.id === "s-wed")?.date).toBe("2026-09-21");
+    expect(result.volume).toEqual([{ weekStart: "2026-09-21", beforeM: 27_000, afterM: 33_000 }]);
+  });
+
+  it("applies none of it when one operation is stale", () => {
+    const ops = snapshotOperations([mon, wed, sun], [
+      { kind: "update", sessionId: "s-mon", patch: { type: "long_run" } },
+      { kind: "update", sessionId: "s-sun", patch: { type: "easy_run" } },
+    ]);
+    if (!ops.ok) throw new Error(ops.message);
+
+    const result = planApply([mon, wed, { ...sun, revision: 2 }], ops.operations);
+
+    expect(result).toMatchObject({ ok: false, reason: "stale" });
+  });
+});
