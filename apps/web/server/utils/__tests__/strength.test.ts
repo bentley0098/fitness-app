@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exerciseKey, findExercise, groupSlots, targetLabel, validateSlots, type Exercise, type TemplateSlot } from "../strength";
+import { buildRows, exerciseKey, latestPerExercise, findExercise, groupSlots, previousSession, targetLabel, validateSlots, type Exercise, type TemplateSlot } from "../strength";
 import { SEED_EXERCISES, SEED_TEMPLATES, planSeed } from "../strengthSeed";
 
 function exercise(over: Partial<Exercise> & { id: string; name: string }): Exercise {
@@ -170,5 +170,90 @@ describe("planSeed", () => {
 
     expect(plan.exercises).toEqual([]);
     expect(plan.templates.map((t) => t.name)).toEqual(["Physio: ankle", "Physio: hips and core"]);
+  });
+});
+
+describe("previousSession", () => {
+  const set = (weightKg: number) => ({ reps: 8, holdSeconds: null, weightKg });
+
+  it("is the sets from the most recent finished session", () => {
+    const past = [
+      { date: "2026-10-05", finishedAt: "2026-10-05T18:00:00Z", sets: [set(40)] },
+      { date: "2026-10-12", finishedAt: "2026-10-12T18:00:00Z", sets: [set(45)] },
+      { date: "2026-10-08", finishedAt: "2026-10-08T18:00:00Z", sets: [set(42)] },
+    ];
+
+    expect(previousSession(past)).toEqual([set(45)]);
+  });
+
+  it("breaks a tie on the same day by when the session finished", () => {
+    const past = [
+      { date: "2026-10-12", finishedAt: "2026-10-12T09:00:00Z", sets: [set(40)] },
+      { date: "2026-10-12", finishedAt: "2026-10-12T19:00:00Z", sets: [set(50)] },
+    ];
+
+    expect(previousSession(past)).toEqual([set(50)]);
+  });
+
+  it("is empty when the exercise has never been logged", () => {
+    expect(previousSession([])).toEqual([]);
+  });
+});
+
+describe("buildRows", () => {
+  const target = { sets: 3, repsMin: 6, repsMax: 8, holdSeconds: null };
+  const done = (reps: number, weightKg: number | null) => ({ reps, holdSeconds: null, weightKg });
+
+  it("leaves the weight blank and uses the target reps for an exercise never logged", () => {
+    const rows = buildRows(target, "reps", [], []);
+
+    expect(rows).toEqual([0, 1, 2].map((setIndex) => ({ setIndex, logged: false, reps: 6, holdSeconds: null, weightKg: null, previous: null })));
+  });
+
+  it("pre-fills each set from the same set last time and shows those numbers beside it", () => {
+    const rows = buildRows(target, "reps", [], [done(8, 40), done(7, 42.5), done(6, 45)]);
+
+    expect(rows.map((r) => [r.reps, r.weightKg])).toEqual([[8, 40], [7, 42.5], [6, 45]]);
+    expect(rows.map((r) => r.previous)).toEqual([done(8, 40), done(7, 42.5), done(6, 45)]);
+    expect(rows.every((r) => !r.logged)).toBe(true);
+  });
+
+  it("falls back to last time's final set when there are more sets today, with nothing beside it", () => {
+    const rows = buildRows({ ...target, sets: 4 }, "reps", [], [done(8, 40), done(8, 40), done(7, 42.5)]);
+
+    expect(rows[3]).toMatchObject({ reps: 7, weightKg: 42.5, previous: null });
+  });
+
+  it("lets a logged set win over the pre-fill", () => {
+    const rows = buildRows(target, "reps", [{ setIndex: 1, reps: 5, holdSeconds: null, weightKg: 47.5 }], [done(8, 40), done(8, 40), done(8, 40)]);
+
+    expect(rows[1]).toMatchObject({ setIndex: 1, logged: true, reps: 5, weightKg: 47.5, previous: done(8, 40) });
+    expect(rows[0]).toMatchObject({ logged: false, reps: 8, weightKg: 40 });
+  });
+
+  it("keeps a bodyweight exercise's weight blank", () => {
+    const rows = buildRows(target, "reps", [], [done(10, null)]);
+
+    expect(rows[0]).toMatchObject({ reps: 10, weightKg: null });
+  });
+
+  it("pre-fills a hold from last time, or the target time the first time", () => {
+    const hold = { sets: 2, repsMin: null, repsMax: null, holdSeconds: 30 };
+
+    expect(buildRows(hold, "hold", [], []).map((r) => r.holdSeconds)).toEqual([30, 30]);
+    expect(buildRows(hold, "hold", [], [{ reps: null, holdSeconds: 40, weightKg: null }]).map((r) => r.holdSeconds)).toEqual([40, 40]);
+    expect(buildRows(hold, "hold", [], [])[0]).toMatchObject({ reps: null });
+  });
+});
+
+describe("latestPerExercise", () => {
+  it("picks, for each exercise, its most recent finished session", () => {
+    const picked = latestPerExercise([
+      { exerciseId: "squat", logExerciseId: "a", date: "2026-10-05", finishedAt: "2026-10-05T10:00:00Z" },
+      { exerciseId: "squat", logExerciseId: "b", date: "2026-10-12", finishedAt: "2026-10-12T10:00:00Z" },
+      { exerciseId: "row", logExerciseId: "c", date: "2026-10-05", finishedAt: "2026-10-05T10:00:00Z" },
+    ]);
+
+    expect(Object.fromEntries(picked)).toEqual({ squat: "b", row: "c" });
   });
 });

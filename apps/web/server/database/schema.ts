@@ -1,4 +1,4 @@
-import { boolean, date, doublePrecision, integer, jsonb, pgTable, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, doublePrecision, integer, jsonb, pgTable, smallint, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 
 // Mirrors adaptive-training-plan-spec.md Section 4 (rewritten in the 9 Sept
 // 2026 pivot — Garmin recovery signals replace physio-supplied thresholds).
@@ -177,6 +177,61 @@ export const strengthTemplateSlots = pgTable("strength_template_slots", {
   supersetGroup: integer("superset_group"),
   note: text("note"),
 });
+
+// The strength log: the runner's own record of a strength session. Starting one
+// copies the template's exercises into strength_log_exercises, so adding,
+// removing and swapping exercises mid-session never touches the template.
+export const strengthLogs = pgTable("strength_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  date: date("date").notNull(),
+  kind: text("kind").notNull(), // gym | physio
+  templateId: uuid("template_id").references(() => strengthTemplates.id, { onDelete: "set null" }),
+  // Kept so history still reads right if the template is later renamed or deleted.
+  templateName: text("template_name").notNull(),
+  // The planned session this log was started from, if any.
+  planSessionId: uuid("plan_session_id").references(() => planSessions.id, { onDelete: "set null" }),
+  status: text("status").notNull().default("in_progress"), // in_progress | finished
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const strengthLogExercises = pgTable("strength_log_exercises", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  logId: uuid("log_id")
+    .notNull()
+    .references(() => strengthLogs.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  exerciseId: uuid("exercise_id")
+    .notNull()
+    .references(() => exercises.id),
+  // How many set rows this exercise has in this session.
+  sets: integer("sets").notNull(),
+  repsMin: integer("reps_min"),
+  repsMax: integer("reps_max"),
+  holdSeconds: integer("hold_seconds"),
+  restSeconds: integer("rest_seconds"),
+  supersetGroup: integer("superset_group"),
+  note: text("note"),
+});
+
+// Only sets that were actually done have a row; the rest of a session's rows
+// are derived from the exercise's set count.
+export const strengthLogSets = pgTable(
+  "strength_log_sets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    logExerciseId: uuid("log_exercise_id")
+      .notNull()
+      .references(() => strengthLogExercises.id, { onDelete: "cascade" }),
+    setIndex: integer("set_index").notNull(),
+    reps: integer("reps"),
+    holdSeconds: integer("hold_seconds"),
+    weightKg: doublePrecision("weight_kg"), // null = bodyweight
+    loggedAt: timestamp("logged_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ onePerSet: unique("strength_log_sets_exercise_set_unique").on(t.logExerciseId, t.setIndex) }),
+);
 
 // Not part of the spec's core tables — infrastructure for the Garmin
 // ingestion mechanism (Section 3 update). Single row, keyed by a fixed id,

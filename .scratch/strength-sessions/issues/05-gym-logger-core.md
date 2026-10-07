@@ -4,12 +4,14 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Starting from a template creates a strength log with set rows for every slot
-- [ ] Rows are pre-filled from the previous finished sessions per the prefill rule, and previous numbers are visible
-- [ ] An exercise with no history has blank weight
-- [ ] Logging or editing a set saves it immediately
-- [ ] Closing and reopening the app resumes the unfinished session
-- [ ] Finish marks the log finished; the template is unchanged
-- [ ] Strength module tests cover the prefill rule across measures and per-side exercises
+- [x] Starting from a template creates a strength log with set rows for every slot
+- [x] Rows are pre-filled from the previous finished sessions per the prefill rule, and previous numbers are visible
+- [x] An exercise with no history has blank weight
+- [x] Logging or editing a set saves it immediately
+- [x] Closing and reopening the app resumes the unfinished session
+- [x] Finish marks the log finished; the template is unchanged
+- [x] Strength module tests cover the prefill rule across measures and per-side exercises
+
+Note: migration 0012 is generated but not applied. No test database exists, so the endpoints were built and type-checked but not exercised against live data; the prefill rule itself is covered by tests.

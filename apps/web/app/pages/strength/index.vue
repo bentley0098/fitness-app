@@ -5,6 +5,15 @@
       <p class="mt-0.5 text-sm text-subtle">Gym and physio routines</p>
     </header>
 
+    <NuxtLink
+      v-if="active?.log"
+      :to="`/strength/log/${active.log.id}`"
+      class="flex items-center justify-between gap-3 rounded-card border border-accent-500 bg-accent-100 p-3.5"
+    >
+      <span class="text-sm font-semibold text-accent-700">Resume {{ active.log.templateName }}</span>
+      <span class="text-xs text-accent-700">In progress →</span>
+    </NuxtLink>
+
     <AsyncState :pending="pending" :error="error" title="Couldn't load your templates" :skeletons="3">
       <template v-if="data">
         <section v-for="section in sections" :key="section.kind" class="space-y-2">
@@ -36,6 +45,8 @@
 import { computed } from "vue";
 
 const { data, pending, error } = await useFetch("/api/strength/templates");
+// A failed lookup here just hides the banner; the templates are the page.
+const { data: active } = await useFetch("/api/strength/logs/active", { default: () => ({ log: null }) });
 
 const sections = computed(() =>
   [

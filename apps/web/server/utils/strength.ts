@@ -101,3 +101,86 @@ export function validateSlots(slots: TemplateSlot[], exercises: Pick<Exercise, "
 
   return null;
 }
+
+export interface LoggedSet {
+  reps: number | null;
+  holdSeconds: number | null;
+  weightKg: number | null;
+}
+
+/** One exercise as it was done in one finished session. */
+export interface PastSession {
+  date: string;
+  finishedAt: string | null;
+  sets: LoggedSet[];
+}
+
+/** The sets from the most recent finished session of an exercise, or none if it has never been logged. */
+export function previousSession(past: PastSession[]): LoggedSet[] {
+  let latest: PastSession | null = null;
+  for (const session of past) {
+    const newer =
+      !latest ||
+      session.date > latest.date ||
+      (session.date === latest.date && (session.finishedAt ?? "") > (latest.finishedAt ?? ""));
+    if (newer) latest = session;
+  }
+  return latest?.sets ?? [];
+}
+
+export interface LogRow extends LoggedSet {
+  setIndex: number;
+  logged: boolean;
+  /** What this set was last time, shown beside it; null if last time had no such set. */
+  previous: LoggedSet | null;
+}
+
+/**
+ * The set rows for one exercise in a session.
+ *
+ * A set already logged shows what was logged. One not yet logged is pre-filled
+ * from the same set last time, falling back to last time's final set when there
+ * are more sets today. With no history the reps (or hold time) come from the
+ * target and the weight is left blank: a weight is only ever remembered, never
+ * invented.
+ */
+export function buildRows(
+  target: Pick<TemplateSlot, "sets" | "repsMin" | "repsMax" | "holdSeconds">,
+  measure: Measure,
+  logged: (LoggedSet & { setIndex: number })[],
+  previous: LoggedSet[],
+): LogRow[] {
+  const byIndex = new Map(logged.map((s) => [s.setIndex, s]));
+
+  return Array.from({ length: target.sets }, (_, setIndex) => {
+    const was = previous[setIndex] ?? null;
+    const done = byIndex.get(setIndex);
+    if (done) {
+      return { setIndex, logged: true, reps: done.reps, holdSeconds: done.holdSeconds, weightKg: done.weightKg, previous: was };
+    }
+
+    const source = was ?? previous[previous.length - 1] ?? null;
+    return {
+      setIndex,
+      logged: false,
+      reps: measure === "reps" ? (source?.reps ?? target.repsMin) : null,
+      holdSeconds: measure === "hold" ? (source?.holdSeconds ?? target.holdSeconds) : null,
+      weightKg: measure === "reps" ? (source?.weightKg ?? null) : null,
+      previous: was,
+    };
+  });
+}
+
+/** For each exercise, the log-exercise of its most recent finished session. */
+export function latestPerExercise(
+  candidates: { exerciseId: string; logExerciseId: string; date: string; finishedAt: string | null }[],
+): Map<string, string> {
+  const best = new Map<string, (typeof candidates)[number]>();
+  for (const c of candidates) {
+    const current = best.get(c.exerciseId);
+    const newer =
+      !current || c.date > current.date || (c.date === current.date && (c.finishedAt ?? "") > (current.finishedAt ?? ""));
+    if (newer) best.set(c.exerciseId, c);
+  }
+  return new Map([...best].map(([exerciseId, c]) => [exerciseId, c.logExerciseId]));
+}
