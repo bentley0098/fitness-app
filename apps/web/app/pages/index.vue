@@ -2,7 +2,7 @@
   <div>
     <!-- The header and week strip sit together on their own panel. -->
     <div>
-      <div class="rounded-b-3xl border-b border-line bg-gradient-to-t from-raised via-canvas via-60% to-canvas px-4 pb-3 pt-4 shadow-card">
+      <div class="rounded-b-3xl border-b border-line bg-gradient-to-t from-raised/50 via-canvas via-30% to-canvas px-4 pb-3 pt-4 shadow-card">
         <header class="mb-3 flex items-baseline justify-between">
           <div>
             <div class="text-xs text-subtle">{{ todayLabel }}</div>
