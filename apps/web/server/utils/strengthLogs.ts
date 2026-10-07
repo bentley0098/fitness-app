@@ -567,3 +567,56 @@ export async function loadStrengthLogsLike(): Promise<StrengthLogLike[]> {
     status: l.status,
   }));
 }
+
+export interface HistorySession {
+  logId: string;
+  date: string;
+  kind: Kind;
+  templateName: string;
+  exercises: { exerciseId: string; name: string; measure: Exercise["measure"]; perSide: boolean; sets: LoggedSet[] }[];
+}
+
+/**
+ * Finished sessions with every set done, newest first, optionally narrowed to
+ * a date range or to the sessions that include one exercise. The MCP reads
+ * this to see what has actually been lifted.
+ */
+export async function loadStrengthHistory(filter: { exerciseId?: string; from?: string; to?: string; limit?: number }): Promise<HistorySession[]> {
+  let query = db
+    .from("strength_logs")
+    .select(
+      "id, date, kind, template_name, strength_log_exercises(position, exercise_id, exercises(name, measure, per_side), strength_log_sets(set_index, reps, hold_seconds, weight_kg))",
+    )
+    .eq("status", "finished")
+    .order("date", { ascending: false })
+    .order("started_at", { ascending: false })
+    .limit(filter.limit ?? 100);
+  if (filter.from) query = query.gte("date", filter.from);
+  if (filter.to) query = query.lte("date", filter.to);
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Load strength history failed: ${error.message}`);
+
+  return ((data ?? []) as Record<string, any>[])
+    .map((log) => ({
+      logId: log.id as string,
+      date: log.date as string,
+      kind: (log.kind === "physio" ? "physio" : "gym") as Kind,
+      templateName: log.template_name as string,
+      exercises: ([...(log.strength_log_exercises ?? [])] as Record<string, any>[])
+        .sort((a, b) => a.position - b.position)
+        .filter((e) => !filter.exerciseId || e.exercise_id === filter.exerciseId)
+        .map((e) => {
+          const exercise = Array.isArray(e.exercises) ? e.exercises[0] : e.exercises;
+          return {
+            exerciseId: e.exercise_id as string,
+            name: (exercise?.name ?? "Unknown exercise") as string,
+            measure: (exercise?.measure === "hold" ? "hold" : "reps") as Exercise["measure"],
+            perSide: Boolean(exercise?.per_side),
+            sets: [...(e.strength_log_sets ?? [])].sort((a, b) => a.set_index - b.set_index).map(toLoggedSet),
+          };
+        })
+        .filter((e) => e.sets.length > 0),
+    }))
+    .filter((s) => s.exercises.length > 0);
+}

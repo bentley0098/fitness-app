@@ -5,6 +5,9 @@ import type { OperationRequest } from "../utils/planProposal";
 import { ProposalError, createProposal, loadPlannerSessions, pendingProposalIdsBySession } from "../utils/planProposals";
 import { addDaysIso, isoDate } from "../utils/dates";
 import { loadTrainingWindow } from "../utils/trainingData";
+import { listLogs, loadStrengthHistory, loadStrengthLogsLike } from "../utils/strengthLogs";
+import { listTemplates, loadExercises, viewTemplate } from "../utils/strengthStore";
+import { isStrengthType } from "../utils/planLabels";
 
 function textResult(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
@@ -54,16 +57,68 @@ export function createMcpServer(appOrigin = ""): McpServer {
     "get_sessions",
     {
       description:
-        "Planned sessions between two ISO dates (inclusive), each with its id, date, phase, type, prescription, cap, status, revision and the ids of any pending proposals already touching it. Use the id when proposing a change.",
+        "Planned sessions between two ISO dates (inclusive), each with its id, date, phase, type, prescription, cap, status, revision and the ids of any pending proposals already touching it. Several sessions can share a date. Strength sessions have type strength_gym or strength_physio, name their template in the prescription, and carry a `log` (status and sets done) once the runner has started them. Use the id when proposing a change.",
       inputSchema: { from: z.string().describe("ISO date, inclusive"), to: z.string().describe("ISO date, inclusive") },
     },
     async ({ from, to }) => {
-      const [all, pending] = await Promise.all([loadPlannerSessions(), pendingProposalIdsBySession()]);
+      const [all, pending, logs, summaries] = await Promise.all([
+        loadPlannerSessions(),
+        pendingProposalIdsBySession(),
+        loadStrengthLogsLike(),
+        listLogs(200),
+      ]);
+      const summaryById = new Map(summaries.map((l) => [l.id, l]));
       const sessions = all
         .filter((s) => s.date >= from && s.date <= to)
-        .map((s) => ({ ...s, pendingProposalIds: pending.get(s.id) ?? [] }));
+        .map((s) => {
+          const base = { ...s, pendingProposalIds: pending.get(s.id) ?? [] };
+          if (!isStrengthType(s.type)) return base;
+          // A strength session's record is the log started from it, not an activity.
+          const started = logs.filter((l) => l.planSessionId === s.id);
+          const linked = started.find((l) => l.status === "finished") ?? started[0];
+          const summary = linked ? summaryById.get(linked.id) : undefined;
+          return { ...base, log: linked ? { id: linked.id, status: linked.status, date: linked.date, setsDone: summary?.setsDone ?? 0 } : null };
+        });
       return textResult(sessions);
     },
+  );
+
+  server.registerTool(
+    "get_exercises",
+    {
+      description:
+        "The exercise library: every exercise with its id, name, measure (reps with an optional weight, or a timed hold), whether it is per side, its note and default rest. Use the ids when asking for history.",
+      inputSchema: {},
+    },
+    async () => textResult(await loadExercises()),
+  );
+
+  server.registerTool(
+    "get_templates",
+    {
+      description:
+        "Strength templates (kind gym or physio), each with its ordered exercises, the sets and rep range or hold time asked of each, rest, notes and which exercises form a superset. Templates carry no weight: weight is whatever the runner last lifted.",
+      inputSchema: {},
+    },
+    async () => {
+      const summaries = await listTemplates();
+      const templates = await Promise.all(summaries.map((t) => viewTemplate(t.id)));
+      return textResult(templates.filter((t) => t !== null));
+    },
+  );
+
+  server.registerTool(
+    "get_strength_history",
+    {
+      description:
+        "Finished strength sessions, newest first, with every set the runner logged (reps, weight in kg, or hold seconds). Narrow it with an exerciseId (from get_exercises) and/or an ISO date range. This is the runner's own record, so read it before proposing anything about their strength work.",
+      inputSchema: {
+        exerciseId: z.string().optional(),
+        from: z.string().optional().describe("ISO date, inclusive"),
+        to: z.string().optional().describe("ISO date, inclusive"),
+      },
+    },
+    async ({ exerciseId, from, to }) => textResult(await loadStrengthHistory({ exerciseId, from, to })),
   );
 
   server.registerTool(

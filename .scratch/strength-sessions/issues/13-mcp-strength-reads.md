@@ -4,9 +4,9 @@
 
 **Blocked by:** 10
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A tool returns exercises and a tool returns templates with their slots
-- [ ] A tool returns strength history for an exercise or date range
-- [ ] The session read includes strength sessions with template and log summary
-- [ ] No MCP tool can write logged sets or session status
+- [x] A tool returns exercises and a tool returns templates with their slots
+- [x] A tool returns strength history for an exercise or date range
+- [x] The session read includes strength sessions with template and log summary
+- [x] No MCP tool can write logged sets or session status
