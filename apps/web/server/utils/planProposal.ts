@@ -230,3 +230,34 @@ export function planApply(sessions: PlannerSession[], operations: Operation[]): 
 
   return { ok: true, after, writes, volume };
 }
+
+function touchedDates(op: Operation): string[] {
+  if (op.kind === "move") return [op.sessionDate, op.toDate];
+  return [op.sessionDate];
+}
+
+/**
+ * A proposal goes stale once the earliest date it touches has passed. Derived
+ * at read time and never stored, so a proposal that is still being looked at
+ * can't flip underneath the page.
+ */
+export function isExpired(operations: Operation[], today: string): boolean {
+  const earliest = operations.flatMap(touchedDates).sort()[0];
+  return earliest !== undefined && earliest < today;
+}
+
+/**
+ * Pending proposals a new one replaces: anything touching a session it also
+ * touches, or adding on a day it also adds on. Keeps at most one pending
+ * proposal per session.
+ */
+export function selectSuperseded(pending: { id: string; operations: Operation[] }[], incoming: Operation[]): string[] {
+  const sessionIds = new Set(incoming.flatMap((op) => (op.kind === "add" ? [] : [op.sessionId])));
+  const addDates = new Set(incoming.flatMap((op) => (op.kind === "add" ? [op.date] : [])));
+
+  return pending
+    .filter((p) =>
+      p.operations.some((op) => (op.kind === "add" ? addDates.has(op.date) : sessionIds.has(op.sessionId))),
+    )
+    .map((p) => p.id);
+}

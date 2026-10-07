@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SENTINEL_DATE, planApply, snapshotOperations, type OperationRequest, type PlannerSession } from "../planProposal";
+import { SENTINEL_DATE, isExpired, planApply, selectSuperseded, snapshotOperations, type Operation, type OperationRequest, type PlannerSession } from "../planProposal";
 
 // Week of Mon 2026-09-21 .. Sun 2026-09-27.
 const WED = "2026-09-23";
@@ -256,5 +256,41 @@ describe("a whole week as one proposal", () => {
     const result = planApply([mon, wed, { ...sun, revision: 2 }], ops.operations);
 
     expect(result).toMatchObject({ ok: false, reason: "stale" });
+  });
+});
+
+describe("expiry", () => {
+  const op = (sessionDate: string, toDate?: string): Operation =>
+    toDate
+      ? { kind: "move", sessionId: "s", toDate, expectedRevision: 1, sessionDate }
+      : { kind: "remove", sessionId: "s", expectedRevision: 1, sessionDate };
+
+  it("is not expired while every session it touches is today or later", () => {
+    expect(isExpired([op("2026-09-25")], "2026-09-25")).toBe(false);
+  });
+
+  it("expires once the earliest session it touches is in the past", () => {
+    expect(isExpired([op("2026-09-30"), op("2026-09-24")], "2026-09-25")).toBe(true);
+  });
+
+  it("counts the date a move lands on as well as the one it leaves", () => {
+    expect(isExpired([op("2026-09-30", "2026-09-20")], "2026-09-25")).toBe(true);
+  });
+});
+
+describe("superseding", () => {
+  const pending = (id: string, ...ops: Operation[]) => ({ id, operations: ops });
+  const update = (sessionId: string): Operation => ({ kind: "update", sessionId, patch: {}, expectedRevision: 1, sessionDate: WED });
+
+  it("supersedes pending proposals that touch the same session", () => {
+    const older = [pending("p1", update("a")), pending("p2", update("b")), pending("p3", update("a"), update("c"))];
+
+    expect(selectSuperseded(older, [update("a")])).toEqual(["p1", "p3"]);
+  });
+
+  it("supersedes a pending add on the same day", () => {
+    const add = (date: string): Operation => ({ kind: "add", date, phase: "base", type: "easy_run", prescription: {}, sessionDate: date });
+
+    expect(selectSuperseded([pending("p1", add(FRI)), pending("p2", add(WED))], [add(FRI)])).toEqual(["p1"]);
   });
 });

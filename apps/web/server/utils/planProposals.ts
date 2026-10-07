@@ -3,7 +3,9 @@ import { db } from "./db";
 import { isoDate } from "./dates";
 import { sessionLabel, type Prescription } from "./planLabels";
 import {
+  isExpired,
   planApply,
+  selectSuperseded,
   snapshotOperations,
   type Operation,
   type OperationRequest,
@@ -85,6 +87,23 @@ export async function createProposal(requests: OperationRequest[], rationale: st
     .single();
   if (error) throw new Error(`Proposal insert failed: ${error.message}`);
 
+  // At most one pending proposal per session: this one replaces any older
+  // pending proposal touching the same sessions.
+  const { data: pending, error: pendingErr } = await db
+    .from("plan_proposals")
+    .select("id, operations")
+    .eq("status", "pending")
+    .neq("id", data.id);
+  if (pendingErr) throw new Error(`Supersede lookup failed: ${pendingErr.message}`);
+  const replaced = selectSuperseded((pending ?? []) as { id: string; operations: Operation[] }[], snapshot.operations);
+  if (replaced.length > 0) {
+    const { error: supErr } = await db
+      .from("plan_proposals")
+      .update({ status: "superseded", status_note: "Replaced by a newer proposal", decided_at: new Date().toISOString() })
+      .in("id", replaced);
+    if (supErr) throw new Error(`Supersede failed: ${supErr.message}`);
+  }
+
   return { proposalId: data.id, verdict: evaluation.verdict, volume: plan.volume };
 }
 
@@ -112,6 +131,10 @@ export async function rejectProposal(id: string): Promise<void> {
 export async function approveProposal(id: string): Promise<void> {
   const proposal = await loadProposal(id);
   if (proposal.status !== "pending") throw new ProposalError(`Proposal is already ${proposal.status}.`, 409);
+
+  if (isExpired(proposal.operations, isoDate(new Date()))) {
+    throw new ProposalError("This proposal has expired — a session it touches is already in the past.", 409);
+  }
 
   const sessions = await loadPlannerSessions();
   const plan = planApply(sessions, proposal.operations);
@@ -193,6 +216,20 @@ export async function approveProposal(id: string): Promise<void> {
   await settle(id, "applied", null);
 }
 
+/** Stored status, except a pending proposal whose dates have passed reads as expired. */
+function effectiveStatus(p: ProposalRow): string {
+  return p.status === "pending" && isExpired(p.operations, isoDate(new Date())) ? "expired" : p.status;
+}
+
+/** Proposals still waiting on a decision — what the banner counts. */
+export async function listPendingProposals(): Promise<{ id: string; rationale: string; createdAt: string }[]> {
+  const { data, error } = await db.from("plan_proposals").select("*").eq("status", "pending").order("created_at", { ascending: false });
+  if (error) throw new Error(`Load proposals failed: ${error.message}`);
+  return ((data ?? []) as ProposalRow[])
+    .filter((p) => effectiveStatus(p) === "pending")
+    .map((p) => ({ id: p.id, rationale: p.rationale, createdAt: p.created_at }));
+}
+
 export interface ProposalView {
   id: string;
   rationale: string;
@@ -242,7 +279,7 @@ export async function viewProposal(id: string): Promise<ProposalView> {
   return {
     id: proposal.id,
     rationale: proposal.rationale,
-    status: proposal.status,
+    status: effectiveStatus(proposal),
     statusNote: proposal.status_note,
     engineVerdict: proposal.engine_verdict,
     createdAt: proposal.created_at,
