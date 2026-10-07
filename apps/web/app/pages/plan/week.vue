@@ -42,7 +42,7 @@
              with labels like "15 min continuous (~2.5 km)". -->
         <section
           ref="dayList"
-          class="space-y-2"
+          class="space-y-3"
           :class="drag.isDragging.value ? 'touch-none' : ''"
           @pointermove="drag.onPointerMove"
           @pointerup="drag.onPointerUp"
