@@ -100,6 +100,36 @@ export function createMcpServer(appOrigin = ""): McpServer {
   );
 
   server.registerTool(
+    "propose_add_session",
+    {
+      description:
+        "Propose adding a new session on a date that has no session. This never changes the plan: it stores a proposal the runner approves or rejects in the app.",
+      inputSchema: {
+        date: z.string().describe("ISO date for the new session"),
+        phase: z.string(),
+        type: z.string().describe("e.g. easy_run, long_run, quality_run"),
+        prescription: z.record(z.unknown()).describe("e.g. {distanceKm: 5, pace: \"6:00\"}"),
+        cap: z.record(z.unknown()).optional(),
+        rationale: z.string().describe("Human-readable reason, shown on the proposal screen"),
+      },
+    },
+    async ({ rationale, ...session }) => proposeAndReport([{ kind: "add", ...session }], rationale),
+  );
+
+  server.registerTool(
+    "propose_remove_session",
+    {
+      description:
+        "Propose removing a planned session (for example to skip it). This never changes the plan: it stores a proposal the runner approves or rejects in the app. Completed or skipped status is the runner's record of what happened and is never set by proposals.",
+      inputSchema: {
+        sessionId: z.string(),
+        rationale: z.string().describe("Human-readable reason, shown on the proposal screen"),
+      },
+    },
+    async ({ sessionId, rationale }) => proposeAndReport([{ kind: "remove", sessionId }], rationale),
+  );
+
+  server.registerTool(
     "get_current_plan",
     { description: "The most recently dated plan_sessions row, whatever its status." },
     async () => {

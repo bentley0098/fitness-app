@@ -124,39 +124,71 @@ export async function approveProposal(id: string): Promise<void> {
   }
 
   const originals = new Map(sessions.map((s) => [s.id, s]));
-  const written = new Set<string>();
+  const touched = new Set<string>(); // existing sessions a write has reached
+  const inserted: { id: string; fields: Record<string, unknown> }[] = [];
+  const deleted: string[] = [];
+
+  // No transactions on this client — undo what landed so a week is never
+  // half-changed. Best effort, and loud if it can't.
+  async function rollback(): Promise<void> {
+    for (const row of inserted) {
+      const { error } = await db.from("plan_sessions").delete().eq("id", row.id);
+      if (error) console.error(`[approveProposal] rollback delete of ${row.id} failed: ${error.message}`);
+    }
+    for (const doneId of touched) {
+      const o = originals.get(doneId)!;
+      const row = { id: o.id, date: o.date, phase: o.phase, type: o.type, prescription: o.prescription, cap: o.cap, revision: o.revision, status: o.status };
+      const query = deleted.includes(doneId) ? db.from("plan_sessions").insert(row) : db.from("plan_sessions").update(row).eq("id", doneId);
+      const { error } = await query;
+      if (error) console.error(`[approveProposal] rollback of ${doneId} failed: ${error.message}`);
+    }
+  }
+
+  const audit: Record<string, unknown>[] = [];
+  const auditFor = (planSessionId: string, fields: unknown) => ({
+    plan_session_id: planSessionId,
+    engine_verdict: proposal.engine_verdict,
+    proposed: { kind: "proposal", proposalId: id, fields },
+    applied: true,
+    rationale: proposal.rationale,
+  });
+  const now = () => new Date().toISOString();
+
   for (const write of plan.writes) {
-    // Parking writes only move the date; the final write carries the new state.
-    const fields = write.final
-      ? { ...write.fields, changed_because: proposal.rationale, updated_at: new Date().toISOString() }
-      : write.fields;
-    const { error } = await db.from("plan_sessions").update(fields).eq("id", write.id);
-    written.add(write.id);
-    if (error) {
-      // No transactions on this client — undo what landed so a week is never half-changed.
-      for (const doneId of written) {
-        const o = originals.get(doneId)!;
-        const { error: undoErr } = await db
-          .from("plan_sessions")
-          .update({ type: o.type, phase: o.phase, prescription: o.prescription, cap: o.cap, revision: o.revision, date: o.date })
-          .eq("id", doneId);
-        if (undoErr) console.error(`[approveProposal] rollback of ${doneId} failed: ${undoErr.message}`);
+    let error: { message: string } | null = null;
+
+    if (write.kind === "delete") {
+      touched.add(write.id);
+      ({ error } = await db.from("plan_sessions").delete().eq("id", write.id));
+      if (!error) deleted.push(write.id);
+    } else if (write.kind === "insert") {
+      const row = { ...write.fields, changed_because: proposal.rationale, updated_at: now() };
+      const res = await db.from("plan_sessions").insert(row).select("id").single();
+      error = res.error ?? (res.data ? null : { message: "Insert returned no row." });
+      if (res.data) {
+        inserted.push({ id: res.data.id, fields: row });
+        audit.push(auditFor(res.data.id, write.fields));
       }
+    } else {
+      touched.add(write.id);
+      // Parking writes only move the date; the final write carries the new state.
+      const fields = write.final ? { ...write.fields, changed_because: proposal.rationale, updated_at: now() } : write.fields;
+      ({ error } = await db.from("plan_sessions").update(fields).eq("id", write.id));
+      if (!error && write.final) audit.push(auditFor(write.id, write.fields));
+    }
+
+    if (error) {
+      await rollback();
       throw new Error(`Apply failed and was rolled back: ${error.message}`);
     }
   }
 
-  const audit = plan.writes
-    .filter((w) => w.final)
-    .map((w) => ({
-      plan_session_id: w.id,
-      engine_verdict: proposal.engine_verdict,
-      proposed: { kind: "proposal", proposalId: id, fields: w.fields },
-      applied: true,
-      rationale: proposal.rationale,
-    }));
-  const { error: auditErr } = await db.from("plan_revisions").insert(audit);
-  if (auditErr) console.error(`[approveProposal] audit insert failed: ${auditErr.message}`);
+  // Removed sessions take their audit rows with them (the FK cascades), so
+  // what was removed is kept on the proposal itself.
+  if (audit.length > 0) {
+    const { error: auditErr } = await db.from("plan_revisions").insert(audit);
+    if (auditErr) console.error(`[approveProposal] audit insert failed: ${auditErr.message}`);
+  }
 
   await settle(id, "applied", null);
 }
@@ -181,6 +213,9 @@ export async function viewProposal(id: string): Promise<ProposalView> {
   const afterById = plan.ok ? new Map(plan.after.map((s) => [s.id, s])) : new Map<string, PlannerSession>();
 
   const rows: ProposalView["rows"] = proposal.operations.map((op) => {
+    if (op.kind === "add") {
+      return { kind: "add", date: op.date, toDate: null, before: null, after: sessionLabel(op.type, op.prescription) };
+    }
     const before = byId.get(op.sessionId);
     const after = afterById.get(op.sessionId);
     return {
@@ -188,14 +223,14 @@ export async function viewProposal(id: string): Promise<ProposalView> {
       date: op.sessionDate,
       toDate: op.kind === "move" ? op.toDate : null,
       before: before ? sessionLabel(before.type, before.prescription) : null,
-      after: after ? sessionLabel(after.type, after.prescription) : null,
+      after: op.kind === "remove" ? null : after ? sessionLabel(after.type, after.prescription) : null,
     };
   });
 
   // A move onto an occupied day swaps the other session; show it rather than
   // let it change without a row.
   if (plan.ok) {
-    const named = new Set(proposal.operations.map((op) => op.sessionId));
+    const named = new Set(proposal.operations.flatMap((op) => (op.kind === "add" ? [] : [op.sessionId])));
     for (const s of plan.after) {
       const was = byId.get(s.id);
       if (!was || named.has(s.id) || was.date === s.date) continue;

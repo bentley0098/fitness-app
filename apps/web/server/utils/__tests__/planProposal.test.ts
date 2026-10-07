@@ -135,7 +135,7 @@ describe("move operations", () => {
 
     const dates = new Map([wed, fri].map((s) => [s.id, s.date]));
     for (const w of result.writes) {
-      if (w.fields.date) dates.set(w.id, w.fields.date);
+      if (w.kind === "update" && w.fields.date) dates.set(w.id, w.fields.date);
       const real = [...dates.values()].filter((d) => d !== SENTINEL_DATE);
       expect(new Set(real).size).toBe(real.length);
     }
@@ -161,6 +161,65 @@ describe("move operations", () => {
     const result = plan([wed, fri], [
       { kind: "move", sessionId: "s-wed", toDate: "2026-09-27" },
       { kind: "move", sessionId: "s-fri", toDate: "2026-09-27" },
+    ]);
+
+    expect(result).toMatchObject({ ok: false, reason: "conflict" });
+  });
+});
+
+describe("add and remove operations", () => {
+  const wed = session({ id: "s-wed", date: WED, prescription: { distanceKm: 5 } });
+  const newRun = { kind: "add" as const, date: FRI, phase: "base", type: "easy_run", prescription: { distanceKm: 4 } };
+
+  it("adds a session on a free day and counts its distance", () => {
+    const result = plan([wed], [newRun]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.after).toHaveLength(2);
+    expect(result.writes).toContainEqual({
+      kind: "insert",
+      fields: { date: FRI, phase: "base", type: "easy_run", prescription: { distanceKm: 4 }, cap: {}, revision: 1 },
+    });
+    expect(result.volume).toEqual([{ weekStart: "2026-09-21", beforeM: 5_000, afterM: 9_000 }]);
+  });
+
+  it("refuses to add a session on a day that already has one", () => {
+    const result = plan([wed], [{ ...newRun, date: WED }]);
+
+    expect(result).toMatchObject({ ok: false, reason: "conflict" });
+  });
+
+  it("removes a session and drops its distance from the week", () => {
+    const result = plan([wed], [{ kind: "remove", sessionId: "s-wed" }]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.after).toEqual([]);
+    expect(result.writes).toEqual([{ kind: "delete", id: "s-wed" }]);
+    expect(result.volume).toEqual([{ weekStart: "2026-09-21", beforeM: 5_000, afterM: 0 }]);
+  });
+
+  it("lets a session be removed and another added on the same day", () => {
+    const result = plan([wed], [{ kind: "remove", sessionId: "s-wed" }, { ...newRun, date: WED }]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const order = result.writes.map((w) => w.kind);
+    expect(order.indexOf("delete")).toBeLessThan(order.indexOf("insert"));
+  });
+
+  it("refuses to remove a session that changed since the proposal", () => {
+    const ops = snapshotOperations([wed], [{ kind: "remove", sessionId: "s-wed" }]);
+    if (!ops.ok) throw new Error(ops.message);
+
+    expect(planApply([{ ...wed, revision: 3 }], ops.operations)).toMatchObject({ ok: false, reason: "stale" });
+  });
+
+  it("refuses to change a session the same proposal removes", () => {
+    const result = plan([wed], [
+      { kind: "remove", sessionId: "s-wed" },
+      { kind: "update", sessionId: "s-wed", patch: { type: "long_run" } },
     ]);
 
     expect(result).toMatchObject({ ok: false, reason: "conflict" });

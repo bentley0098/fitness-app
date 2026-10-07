@@ -28,12 +28,29 @@ export interface SessionPatch {
 }
 
 /** What Claude asks for, before the session state it saw is recorded. */
-export type OperationRequest =
-  | { kind: "update"; sessionId: string; patch: SessionPatch }
-  | { kind: "move"; sessionId: string; toDate: string };
+export interface NewSession {
+  date: string;
+  phase: string;
+  type: string;
+  prescription: Prescription;
+  cap?: Record<string, unknown>;
+}
 
-/** A stored operation: the request plus the session state it was made against. */
-export type Operation = OperationRequest & { expectedRevision: number; sessionDate: string };
+export type AddRequest = { kind: "add" } & NewSession;
+export type TargetedRequest =
+  | { kind: "update"; sessionId: string; patch: SessionPatch }
+  | { kind: "move"; sessionId: string; toDate: string }
+  | { kind: "remove"; sessionId: string };
+export type OperationRequest = AddRequest | TargetedRequest;
+
+/**
+ * A stored operation: the request plus the session state it was made against.
+ * `sessionDate` is the earliest date it touches on the session's side — it is
+ * what expiry reads. Adds have no existing session, so no revision to check.
+ */
+export type Operation =
+  | (TargetedRequest & { expectedRevision: number; sessionDate: string })
+  | (AddRequest & { sessionDate: string });
 
 export interface WeekVolume {
   weekStart: string;
@@ -58,12 +75,15 @@ export const SENTINEL_DATE = "9999-12-31";
  * bookkeeping (parking); `final` ones carry the session's new state, with
  * `revision` already the new value.
  */
-export interface SessionWrite {
-  kind: "update";
-  id: string;
-  final: boolean;
-  fields: Partial<Pick<PlannerSession, "type" | "phase" | "prescription" | "cap" | "revision" | "date">>;
-}
+export type SessionWrite =
+  | {
+      kind: "update";
+      id: string;
+      final: boolean;
+      fields: Partial<Pick<PlannerSession, "type" | "phase" | "prescription" | "cap" | "revision" | "date">>;
+    }
+  | { kind: "insert"; fields: Pick<PlannerSession, "type" | "phase" | "prescription" | "cap" | "revision" | "date"> }
+  | { kind: "delete"; id: string };
 
 export type ApplyPlan = { ok: true; after: PlannerSession[]; writes: SessionWrite[]; volume: WeekVolume[] } | PlanFailure;
 
@@ -78,6 +98,10 @@ function fail(reason: PlanFailure["reason"], message: string): PlanFailure {
 export function snapshotOperations(sessions: PlannerSession[], requests: OperationRequest[]): SnapshotResult {
   const operations: Operation[] = [];
   for (const request of requests) {
+    if (request.kind === "add") {
+      operations.push({ ...request, sessionDate: request.date });
+      continue;
+    }
     const target = sessions.find((s) => s.id === request.sessionId);
     if (!target) return fail("missing", `No session with id ${request.sessionId}.`);
     operations.push({ ...request, expectedRevision: target.revision, sessionDate: target.date });
@@ -111,18 +135,33 @@ function plannedM(sessions: PlannerSession[], weekStart: string): number {
 export function planApply(sessions: PlannerSession[], operations: Operation[]): ApplyPlan {
   let working = sessions;
   const referenced = new Map<string, number>();
-  for (const op of operations) referenced.set(op.sessionId, (referenced.get(op.sessionId) ?? 0) + 1);
-
   for (const op of operations) {
+    if (op.kind !== "add") referenced.set(op.sessionId, (referenced.get(op.sessionId) ?? 0) + 1);
+  }
+
+  let addedCount = 0;
+  for (const op of operations) {
+    if (op.kind === "add") {
+      if (!ISO_DATE.test(op.date)) return fail("invalid", `Not a calendar date: ${op.date}`);
+      working = [
+        ...working,
+        { id: `new-${addedCount++}`, date: op.date, phase: op.phase, type: op.type, prescription: op.prescription, cap: op.cap ?? {}, status: "planned", revision: 1 },
+      ];
+      continue;
+    }
+
     // Staleness is judged against the plan as it is now, not as earlier
     // operations in this same proposal leave it.
     const original = sessions.find((s) => s.id === op.sessionId);
     if (!original) return fail("missing", `No session with id ${op.sessionId}.`);
     if (original.revision !== op.expectedRevision) return fail("stale", "Plan changed since this was proposed.");
 
-    const target = working.find((s) => s.id === op.sessionId)!;
+    const target = working.find((s) => s.id === op.sessionId);
+    if (!target) return fail("conflict", "An operation targets a session this proposal already removed.");
 
-    if (op.kind === "update") {
+    if (op.kind === "remove") {
+      working = working.filter((s) => s.id !== target.id);
+    } else if (op.kind === "update") {
       const patched = applyPatch(target, op.patch);
       if ("ok" in patched) return patched;
       working = working.map((s) => (s.id === target.id ? patched : s));
@@ -149,14 +188,22 @@ export function planApply(sessions: PlannerSession[], operations: Operation[]): 
   }
 
   const before = new Map(sessions.map((s) => [s.id, s]));
-  const changed = working.filter((s) => JSON.stringify({ ...s, revision: 0 }) !== JSON.stringify({ ...before.get(s.id)!, revision: 0 }));
+  const unchanged = (s: PlannerSession) => {
+    const was = before.get(s.id);
+    return !!was && JSON.stringify({ ...s, revision: 0 }) === JSON.stringify({ ...was, revision: 0 });
+  };
+  const added = working.filter((s) => !before.has(s.id));
+  const changed = working.filter((s) => before.has(s.id) && !unchanged(s));
+  const removed = sessions.filter((s) => !working.some((w) => w.id === s.id));
   const after = working.map((s) => (changed.includes(s) ? { ...s, revision: s.revision + 1 } : s));
 
-  // Park every session whose date changes before any of them lands, so a
-  // swap never shows two sessions on one day.
+  // Order matters: deletes free their days, parking keeps a swap from ever
+  // showing two sessions on one day, and inserts go last onto freed days.
   const writes: SessionWrite[] = [];
-  const moved = changed.filter((s) => s.date !== before.get(s.id)!.date);
-  for (const s of moved) writes.push({ kind: "update", id: s.id, final: false, fields: { date: SENTINEL_DATE } });
+  for (const s of removed) writes.push({ kind: "delete", id: s.id });
+  for (const s of changed.filter((c) => c.date !== before.get(c.id)!.date)) {
+    writes.push({ kind: "update", id: s.id, final: false, fields: { date: SENTINEL_DATE } });
+  }
   for (const s of after.filter((a) => changed.some((c) => c.id === a.id))) {
     writes.push({
       kind: "update",
@@ -165,12 +212,16 @@ export function planApply(sessions: PlannerSession[], operations: Operation[]): 
       fields: { type: s.type, phase: s.phase, prescription: s.prescription, cap: s.cap, revision: s.revision, date: s.date },
     });
   }
+  for (const s of added) {
+    writes.push({
+      kind: "insert",
+      fields: { date: s.date, phase: s.phase, type: s.type, prescription: s.prescription, cap: s.cap, revision: 1 },
+    });
+  }
 
   const touchedWeeks = new Set<string>();
-  for (const s of changed) {
-    touchedWeeks.add(mondayOf(before.get(s.id)!.date));
-    touchedWeeks.add(mondayOf(s.date));
-  }
+  for (const s of [...changed, ...removed]) touchedWeeks.add(mondayOf(before.get(s.id)!.date));
+  for (const s of [...changed, ...added]) touchedWeeks.add(mondayOf(s.date));
   const volume = [...touchedWeeks].sort().map((weekStart) => ({
     weekStart,
     beforeM: plannedM(sessions, weekStart),
