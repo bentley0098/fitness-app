@@ -29,9 +29,9 @@
 
     <ProposalBanner />
 
-    <AsyncState :pending="pending" :error="error" title="Couldn't load your week" :skeletons="3">
+    <AsyncState :pending="pending && !data" :error="error" title="Couldn't load your week" :skeletons="3">
       <template v-if="data && selectedDay">
-        <WeekDayStrip :days="data.days" :selected="selected" @select="selected = $event" />
+        <WeekDayStrip :days="data.days" :selected="selected" @select="selected = $event" @swipe="changeWeek" />
 
         <section class="space-y-2">
           <div class="flex items-center justify-between">
@@ -40,7 +40,7 @@
               v-if="!selectedDay.isToday"
               type="button"
               class="text-xs font-medium text-accent-700"
-              @click="selected = todayDate"
+              @click="goToday"
             >
               Today
             </button>
@@ -85,15 +85,47 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { runsFirst } from "~/composables/sessionKind";
 
 const DAY_FORMAT: Intl.DateTimeFormatOptions = { weekday: "long", day: "numeric", month: "short" };
 
-const { data, pending, error, refresh } = await useFetch("/api/plan-sessions");
+// The week on screen; undefined means the current one.
+const weekStart = ref<string | undefined>(undefined);
+const { data, pending, error, refresh } = await useFetch("/api/plan-sessions", {
+  query: computed(() => ({ week: weekStart.value })),
+});
 
-const todayDate = computed(() => data.value?.days.find((d) => d.isToday)?.date ?? data.value?.days[0]?.date ?? "");
-const selected = ref(todayDate.value);
+const selected = ref(data.value?.days.find((d) => d.isToday)?.date ?? data.value?.days[0]?.date ?? "");
+
+// A new week lands on today if it is in that week, otherwise on the same
+// weekday the user was looking at.
+let keepIndex = 0;
+watch(
+  () => data.value?.week.startDate,
+  () => {
+    const days = data.value?.days;
+    if (!days) return;
+    selected.value = (days.find((d) => d.isToday) ?? days[keepIndex] ?? days[0]!).date;
+  },
+);
+
+function changeWeek(direction: "next" | "prev") {
+  const nav = data.value?.nav;
+  const target = direction === "next" ? nav?.nextWeekStart : nav?.prevWeekStart;
+  if (!target) return;
+  keepIndex = Math.max(0, data.value!.days.findIndex((d) => d.date === selected.value));
+  weekStart.value = target;
+}
+
+function goToday() {
+  const nav = data.value?.nav;
+  if (!nav) return;
+  // Already in the current week: just reselect today, no refetch needed.
+  const today = data.value?.days.find((d) => d.isToday);
+  if (today) selected.value = today.date;
+  else weekStart.value = nav.currentWeekStart;
+}
 
 const selectedDay = computed(() => data.value?.days.find((d) => d.date === selected.value) ?? null);
 const sessions = computed(() => runsFirst(selectedDay.value?.sessions ?? []));
