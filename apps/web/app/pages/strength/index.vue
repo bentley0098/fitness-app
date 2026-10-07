@@ -5,6 +5,8 @@
       <p class="mt-0.5 text-sm text-subtle">
         Gym and physio routines ·
         <NuxtLink to="/strength/history" class="font-medium text-accent-700">History</NuxtLink>
+        ·
+        <NuxtLink to="/strength/exercises" class="font-medium text-accent-700">Exercises</NuxtLink>
       </p>
     </header>
 

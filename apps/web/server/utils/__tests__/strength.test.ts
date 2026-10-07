@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_REST_SECONDS, buildRows, summariseSession, exerciseKey, latestPerExercise, planGroupSets, restForRound, retarget, findExercise, groupSlots, previousSession, targetLabel, validateSlots, type Exercise, type TemplateSlot } from "../strength";
+import { DEFAULT_REST_SECONDS, buildRows, exerciseSeries, summariseSession, exerciseKey, latestPerExercise, planGroupSets, restForRound, retarget, findExercise, groupSlots, previousSession, targetLabel, validateSlots, type Exercise, type TemplateSlot } from "../strength";
 import { SEED_EXERCISES, SEED_TEMPLATES, planSeed } from "../strengthSeed";
 
 function exercise(over: Partial<Exercise> & { id: string; name: string }): Exercise {
@@ -326,5 +326,43 @@ describe("summariseSession", () => {
 
   it("is empty for a session with nothing logged", () => {
     expect(summariseSession([])).toEqual({ setsDone: 0, exercisesDone: 0 });
+  });
+});
+
+describe("exerciseSeries", () => {
+  const set = (reps: number | null, weightKg: number | null, holdSeconds: number | null = null) => ({ reps, weightKg, holdSeconds });
+  const session = (date: string, ...sets: ReturnType<typeof set>[]) => ({ date, finishedAt: `${date}T18:00:00Z`, sets });
+
+  it("plots the heaviest set of each session, oldest first", () => {
+    const series = exerciseSeries(
+      [session("2026-10-12", set(8, 45), set(6, 50)), session("2026-10-05", set(8, 40), set(8, 42.5))],
+      "reps",
+    );
+
+    expect(series).toEqual({
+      metric: "weight",
+      unit: "kg",
+      points: [
+        { date: "2026-10-05", value: 42.5 },
+        { date: "2026-10-12", value: 50 },
+      ],
+    });
+  });
+
+  it("falls back to the most reps in a set when nothing was ever weighted", () => {
+    const series = exerciseSeries([session("2026-10-05", set(10, null), set(12, null)), session("2026-10-12", set(15, null))], "reps");
+
+    expect(series).toMatchObject({ metric: "reps", unit: "reps" });
+    expect(series.points.map((p) => p.value)).toEqual([12, 15]);
+  });
+
+  it("plots the longest hold for a timed exercise", () => {
+    const series = exerciseSeries([session("2026-10-05", set(null, null, 30), set(null, null, 45))], "hold");
+
+    expect(series).toEqual({ metric: "hold", unit: "s", points: [{ date: "2026-10-05", value: 45 }] });
+  });
+
+  it("skips a session where nothing was logged for the exercise", () => {
+    expect(exerciseSeries([session("2026-10-05")], "reps").points).toEqual([]);
   });
 });

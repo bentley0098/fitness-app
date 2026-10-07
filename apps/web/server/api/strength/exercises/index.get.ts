@@ -1,3 +1,3 @@
-import { loadExercises } from "../../utils/strengthStore";
+import { loadExercises } from "../../../utils/strengthStore";
 
 export default defineEventHandler(async () => ({ exercises: await loadExercises() }));

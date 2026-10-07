@@ -247,3 +247,33 @@ export function summariseSession(exercises: { setsLogged: number }[]): { setsDon
     exercisesDone: exercises.filter((e) => e.setsLogged > 0).length,
   };
 }
+
+export interface ExerciseSeries {
+  metric: "weight" | "reps" | "hold";
+  unit: "kg" | "reps" | "s";
+  points: { date: string; value: number }[];
+}
+
+/**
+ * One value per finished session, oldest first: the heaviest set, or the most
+ * reps in a set if the exercise has never been weighted, or the longest hold.
+ */
+export function exerciseSeries(sessions: PastSession[], measure: Measure): ExerciseSeries {
+  const ordered = [...sessions].sort((a, b) => a.date.localeCompare(b.date) || (a.finishedAt ?? "").localeCompare(b.finishedAt ?? ""));
+
+  const max = (values: (number | null)[]): number | null => {
+    const real = values.filter((v): v is number => v != null);
+    return real.length ? Math.max(...real) : null;
+  };
+  const pointsOf = (pick: (s: LoggedSet) => number | null) =>
+    ordered.flatMap((s) => {
+      const value = max(s.sets.map(pick));
+      return value == null ? [] : [{ date: s.date, value }];
+    });
+
+  if (measure === "hold") return { metric: "hold", unit: "s", points: pointsOf((s) => s.holdSeconds) };
+
+  const weighted = pointsOf((s) => s.weightKg);
+  if (weighted.length > 0) return { metric: "weight", unit: "kg", points: weighted };
+  return { metric: "reps", unit: "reps", points: pointsOf((s) => s.reps) };
+}

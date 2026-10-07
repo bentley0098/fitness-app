@@ -3,6 +3,7 @@ import { isoDate } from "./dates";
 import {
   buildRows,
   exerciseKey,
+  exerciseSeries,
   findExercise,
   groupSlots,
   latestPerExercise,
@@ -13,7 +14,9 @@ import {
   targetLabel,
   type Exercise,
   type Kind,
+  type ExerciseSeries,
   type Measure,
+  type PastSession,
   type PlannedSet,
   type LogRow,
   type LoggedSet,
@@ -483,4 +486,39 @@ export async function deleteLog(id: string): Promise<void> {
   const { data, error } = await db.from("strength_logs").delete().eq("id", id).select("id");
   if (error) throw new Error(`Delete session failed: ${error.message}`);
   if (!data?.length) throw new LogError("No such session.", 404);
+}
+
+export interface ExerciseHistory {
+  exercise: Exercise;
+  series: ExerciseSeries;
+  /** The last few finished sessions, newest first. */
+  recent: { logId: string; date: string; templateName: string; sets: LoggedSet[] }[];
+}
+
+export async function loadExerciseHistory(exerciseId: string): Promise<ExerciseHistory> {
+  const { data: row, error: exErr } = await db.from("exercises").select("*").eq("id", exerciseId).maybeSingle();
+  if (exErr) throw new Error(`Load exercise failed: ${exErr.message}`);
+  if (!row) throw new LogError("No such exercise.", 404);
+  const exercise = toExercise(row);
+
+  const { data, error } = await db
+    .from("strength_log_exercises")
+    .select("id, strength_logs!inner(id, date, finished_at, status, template_name), strength_log_sets(set_index, reps, hold_seconds, weight_kg)")
+    .eq("exercise_id", exerciseId)
+    .eq("strength_logs.status", "finished");
+  if (error) throw new Error(`Load history failed: ${error.message}`);
+
+  const sessions = ((data ?? []) as Record<string, any>[]).map((entry) => {
+    const log = Array.isArray(entry.strength_logs) ? entry.strength_logs[0] : entry.strength_logs;
+    const sets = [...(entry.strength_log_sets ?? [])].sort((a, b) => a.set_index - b.set_index).map(toLoggedSet);
+    return { logId: log.id as string, templateName: log.template_name as string, date: log.date as string, finishedAt: (log.finished_at ?? null) as string | null, sets };
+  });
+
+  const past: PastSession[] = sessions.map(({ date, finishedAt, sets }) => ({ date, finishedAt, sets }));
+  const recent = [...sessions]
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.finishedAt ?? "").localeCompare(a.finishedAt ?? ""))
+    .slice(0, 5)
+    .map(({ logId, date, templateName, sets }) => ({ logId, date, templateName, sets }));
+
+  return { exercise, series: exerciseSeries(past, exercise.measure), recent };
 }

@@ -4,9 +4,9 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] An exercise page lists its recent sessions' sets
-- [ ] The chart plots the top-set weight per session
-- [ ] Exercises with no weight (holds, bodyweight) show a sensible empty or alternative state
-- [ ] Strength module tests cover the top-set series
+- [x] An exercise page lists its recent sessions' sets
+- [x] The chart plots the top-set weight per session
+- [x] Exercises with no weight (holds, bodyweight) show a sensible empty or alternative state
+- [x] Strength module tests cover the top-set series
