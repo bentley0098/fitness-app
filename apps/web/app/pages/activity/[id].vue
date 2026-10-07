@@ -1,13 +1,90 @@
 <template>
   <div class="space-y-4 p-4">
     <header>
-      <NuxtLink to="/activity" class="mb-2 inline-flex items-center gap-1 text-xs font-medium text-accent-700">
-        <AppIcon name="chevron-left" :size="14" /> Activity
+      <NuxtLink :to="backTo" class="mb-2 inline-flex items-center gap-1 text-xs font-medium text-accent-700">
+        <AppIcon name="chevron-left" :size="14" /> {{ planned ? "Plan" : "Activity" }}
       </NuxtLink>
     </header>
 
     <AsyncState :pending="pending" :error="error" title="Couldn't load this activity" :skeletons="4">
-      <template v-if="data">
+      <!-- A session that hasn't produced an activity: what the plan asks for. -->
+      <template v-if="planned && plannedData">
+        <div class="rounded-card bg-ink p-4 text-white">
+          <div class="text-[11px] uppercase tracking-wide text-white/60">
+            {{ plannedData.typeLabel }} · {{ formatDate(plannedData.date) }}
+          </div>
+          <div class="mt-1 flex items-baseline gap-1.5">
+            <template v-if="plannedData.targetDistanceM != null">
+              <span class="tnum text-3xl font-bold">{{ formatDistance(plannedData.targetDistanceM) }}</span>
+              <span class="text-sm text-white/60">km</span>
+            </template>
+            <template v-else-if="plannedData.targetDurationS != null">
+              <span class="tnum text-3xl font-bold">{{ Math.round(plannedData.targetDurationS / 60) }}</span>
+              <span class="text-sm text-white/60">min</span>
+            </template>
+            <span v-else class="text-xl font-bold">{{ plannedData.label }}</span>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-white/15 pt-3 text-xs text-white/70">
+            <span>Status: {{ plannedData.completion.state }}</span>
+            <span v-if="plannedData.phase">Phase: {{ plannedData.phase }}</span>
+          </div>
+        </div>
+
+        <p v-if="plannedData.changedBecause" class="rounded-card bg-verdict-hold-soft p-3 text-xs text-verdict-hold">
+          {{ plannedData.changedBecause }}
+        </p>
+
+        <section v-if="plannedDetails.length" class="space-y-2">
+          <SectionHeader title="Details" />
+          <dl class="divide-y divide-line rounded-card border border-line bg-surface px-3.5 shadow-card">
+            <div v-for="d in plannedDetails" :key="d.label" class="flex justify-between gap-3 py-2.5 text-sm">
+              <dt class="text-subtle">{{ d.label }}</dt>
+              <dd class="text-right font-medium text-ink">{{ d.value }}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section v-if="plannedData.isStrength" class="space-y-2">
+          <SectionHeader :title="plannedData.label" />
+          <div class="space-y-2">
+            <div
+              v-for="(group, i) in plannedData.template?.groups ?? []"
+              :key="i"
+              class="divide-y divide-line rounded-card border bg-surface px-3.5 shadow-card"
+              :class="group.superset ? 'border-accent-500/40' : 'border-line'"
+            >
+              <p v-if="group.superset" class="pt-2 text-[10px] font-semibold uppercase tracking-wide text-accent-700">Superset</p>
+              <div v-for="slot in group.slots" :key="slot.id" class="flex items-baseline justify-between gap-3 py-2.5 text-sm">
+                <span class="font-medium text-ink">{{ slot.exercise }}</span>
+                <span class="tnum text-subtle">{{ slot.target }}</span>
+              </div>
+            </div>
+            <p v-if="!plannedData.template?.groups?.length" class="text-sm text-subtle">No exercises found for this session.</p>
+          </div>
+
+          <div class="flex items-center gap-3 pt-1">
+            <NuxtLink
+              v-if="plannedData.completion.logId"
+              :to="`/strength/log/${plannedData.completion.logId}`"
+              class="rounded-lg bg-raised px-3 py-1.5 text-xs font-semibold text-accent-700"
+            >
+              {{ plannedData.completion.state === "completed" ? "View session" : "Resume" }}
+            </NuxtLink>
+            <button
+              v-else-if="plannedData.templateId"
+              type="button"
+              class="rounded-lg bg-accent-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+              :disabled="starting"
+              @click="start"
+            >
+              {{ starting ? "Starting…" : "Start" }}
+            </button>
+            <span v-if="startError" class="text-xs text-verdict-regress" role="alert">{{ startError }}</span>
+          </div>
+        </section>
+      </template>
+
+      <template v-else-if="data">
         <div class="rounded-card bg-ink p-4 text-white">
           <div class="text-[11px] uppercase tracking-wide text-white/60">
             {{ humanizeType(data.activityType) }} · {{ formatDate(data.date) }}
@@ -81,9 +158,50 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
+
 const route = useRoute();
 
-const { data, pending, error } = await useFetch(`/api/activities/${route.params.id}`);
+// ?planned=1 means the id is a plan session, not a Garmin activity.
+const planned = computed(() => route.query.planned === "1");
+
+// Only the fetch that applies runs; the other stays idle.
+const { data, pending: activityPending, error: activityError } = await useFetch(`/api/activities/${route.params.id}`, {
+  immediate: !planned.value,
+});
+const {
+  data: plannedData,
+  pending: plannedPending,
+  error: plannedError,
+} = await useFetch(`/api/plan-sessions/${route.params.id}`, { immediate: planned.value });
+
+const pending = computed(() => (planned.value ? plannedPending.value : activityPending.value));
+const error = computed(() => (planned.value ? plannedError.value : activityError.value));
+
+const backTo = computed(() => (planned.value && plannedData.value ? `/plan/week?week=${plannedData.value.weekStart}` : planned.value ? "/plan" : "/activity"));
+
+const { starting, startError, start } = useStartSession(() => ({
+  id: plannedData.value?.id ?? "",
+  templateId: plannedData.value?.templateId,
+}));
+
+// Whatever else the prescription carries, shown as-is.
+const plannedDetails = computed(() => {
+  const p = (plannedData.value?.prescription ?? {}) as Record<string, unknown>;
+  const rows: { label: string; value: string }[] = [];
+  const add = (label: string, v: unknown, suffix = "") => {
+    if (v != null && v !== "") rows.push({ label, value: `${v}${suffix}` });
+  };
+  if (plannedData.value?.targetDistanceM != null && plannedData.value.targetDurationS != null) {
+    add("Duration", Math.round(plannedData.value.targetDurationS / 60), " min");
+  }
+  add("Goal", p.goal);
+  add("Pace", p.pace);
+  add("Ratio", p.ratio, " run/walk");
+  if (plannedData.value?.targetDistanceM == null || p.distanceKm == null) add("Approx distance", p.approxKm, " km");
+  add("Note", p.note);
+  return rows;
+});
 
 function splitPace(s: { distanceM: number | null; durationS: number | null }): string {
   const p = paceFrom(s.distanceM, s.durationS);

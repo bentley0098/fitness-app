@@ -21,7 +21,8 @@
       <div
         v-for="session in sessions"
         :key="session.id"
-        class="py-2.5 first:pt-0 last:pb-0"
+        class="cursor-pointer py-2.5 first:pt-0 last:pb-0"
+        @click="$emit('open', $event, session)"
         @pointerdown="draggable && $emit('grab', $event, session.id)"
       >
         <SessionRow :session="session" :draggable="draggable" :is-source-gap="draggingId === session.id" />
@@ -70,5 +71,5 @@ withDefaults(
   { unplanned: null, unplannedStrength: () => [], draggable: false, draggingId: null, isDropTarget: false },
 );
 
-defineEmits<{ grab: [event: PointerEvent, sessionId: string] }>();
+defineEmits<{ grab: [event: PointerEvent, sessionId: string]; open: [event: MouseEvent, session: SessionRowData] }>();
 </script>

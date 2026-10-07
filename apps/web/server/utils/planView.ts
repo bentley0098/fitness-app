@@ -14,7 +14,7 @@ import {
   weekStartForNumber,
 } from "./planMeta";
 import { buildDay, sessionsByDate, totalsFor, type ActivityLike, type DaySession, type SessionLike, type StrengthLogLike } from "./planCompletion";
-import { isStrengthType } from "./planLabels";
+import { isStrengthType, typeLabel } from "./planLabels";
 import { loadStrengthLogsLike } from "./strengthLogs";
 import { selectTolerant } from "./optionalColumns";
 import { ACTIVITY_BASE_COLUMNS, ACTIVITY_COLUMNS, toActivityDto } from "./serialize";
@@ -72,6 +72,23 @@ function toSessionDto(s: DaySession) {
     completion: s.completion,
     isStrength: isStrengthType(s.type),
     templateId: typeof s.prescription?.templateId === "string" ? s.prescription.templateId : null,
+  };
+}
+
+/** One planned session with its derived completion, or null when the id is unknown. */
+export function buildPlannedSession(snapshot: PlanSnapshot, id: string) {
+  const row = snapshot.sessions.find((s) => s.id === id);
+  if (!row) return null;
+
+  const sameDay = snapshot.sessions.filter((s) => s.date === row.date);
+  const day = buildDay(row.date, sameDay, snapshot.activities, snapshot.today, snapshot.strengthLogs);
+  const session = day.sessions.find((s) => s.id === id);
+  if (!session) return null;
+
+  return {
+    ...toSessionDto(session),
+    typeLabel: typeLabel(session.type),
+    weekStart: mondayOf(row.date),
   };
 }
 
