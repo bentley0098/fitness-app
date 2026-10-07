@@ -42,6 +42,7 @@
 
 <script setup lang="ts">
 const links = [
+  { to: "/activity", label: "Activity", sub: "Every run synced from Garmin", icon: "run" },
   { to: "/more/trends", label: "Trends", sub: "Volume, workload ratio and verdict history", icon: "trend" },
   { to: "/more/log", label: "Log a note", sub: "Optional RPE and free text for today", icon: "note" },
 ];
