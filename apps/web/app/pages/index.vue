@@ -39,11 +39,12 @@
         <section class="space-y-2">
           <SectionHeader title="Today's session" />
           <SessionCard
-            v-if="data.today.session"
+            v-if="data.today.sessions.length || data.today.unplannedStrength.length"
             :date="data.asOfDate"
             :is-today="true"
-            :session="data.today.session"
-            :completion="data.today.completion!"
+            :sessions="data.today.sessions"
+            :unplanned="data.today.unplanned"
+            :unplanned-strength="data.today.unplannedStrength"
           />
           <div v-else class="rounded-card border border-line bg-surface p-4 shadow-card">
             <div class="flex items-center gap-2 text-sm font-medium text-ink">

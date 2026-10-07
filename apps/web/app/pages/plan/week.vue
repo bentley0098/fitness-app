@@ -32,6 +32,9 @@
               {{ data.week.sessionsCompleted }} of {{ data.week.sessionsPlanned }} sessions ·
               {{ formatDuration(data.week.actualMovingTimeS) }} moving
             </p>
+            <p v-if="data.week.strengthPlanned" class="mt-0.5 text-xs text-subtle">
+              Strength {{ data.week.strengthCompleted }} of {{ data.week.strengthPlanned }} sessions
+            </p>
           </div>
         </div>
 
@@ -45,20 +48,17 @@
           @pointerup="drag.onPointerUp"
           @pointercancel="drag.cancel"
         >
-          <div
-            v-for="day in data.days"
-            :key="day.date"
-            :data-drop-key="day.date"
-            @pointerdown="day.session && drag.onPointerDown($event, day.date)"
-          >
+          <div v-for="day in data.days" :key="day.date" :data-drop-key="day.date">
             <SessionCard
               :date="day.date"
               :is-today="day.isToday"
-              :session="day.session"
-              :completion="day.completion"
-              :draggable="Boolean(day.session)"
-              :is-drop-target="drag.isDragging.value && drag.overKey.value === day.date && drag.activeKey.value !== day.date"
-              :is-source-gap="drag.activeKey.value === day.date"
+              :sessions="day.sessions"
+              :unplanned="day.unplanned"
+              :unplanned-strength="day.unplannedStrength"
+              draggable
+              :dragging-id="drag.activeKey.value"
+              :is-drop-target="drag.isDragging.value && drag.overKey.value === day.date && draggedFrom?.date !== day.date"
+              @grab="(event, sessionId) => drag.onPointerDown(event, sessionId, dateOf(sessionId) ?? day.date)"
             />
           </div>
         </section>
@@ -74,7 +74,7 @@
     <!-- The card in hand. Fixed, so lifting it reflows nothing underneath and
          the drop-target rects stay valid for the whole gesture. -->
     <div
-      v-if="drag.ghost.value && draggedDay"
+      v-if="drag.ghost.value && draggedSession"
       class="pointer-events-none fixed z-50"
       :style="{
         left: `${drag.ghost.value.x}px`,
@@ -82,13 +82,7 @@
         width: `${drag.ghost.value.width}px`,
       }"
     >
-      <SessionCard
-        :date="draggedDay.date"
-        :is-today="draggedDay.isToday"
-        :session="draggedDay.session"
-        :completion="draggedDay.completion"
-        dragging
-      />
+      <SessionRow :session="draggedSession" dragging />
     </div>
   </div>
 </template>
@@ -120,28 +114,32 @@ const hasDragged = ref(false);
 
 const drag = useLongPressDrag({
   container: dayList,
-  onDrop: (fromDate, toDate) => void moveSession(fromDate, toDate),
+  onDrop: (sessionId, toDate) => void moveSession(sessionId, toDate),
 });
 
-const draggedDay = computed(() => data.value?.days.find((d) => d.date === drag.activeKey.value) ?? null);
+function dateOf(sessionId: string): string | undefined {
+  return data.value?.days.find((d) => d.sessions.some((s) => s.id === sessionId))?.date;
+}
 
-async function moveSession(fromDate: string, toDate: string) {
+const draggedFrom = computed(() => data.value?.days.find((d) => d.sessions.some((s) => s.id === drag.activeKey.value)) ?? null);
+const draggedSession = computed(() => draggedFrom.value?.sessions.find((s) => s.id === drag.activeKey.value) ?? null);
+
+async function moveSession(sessionId: string, toDate: string) {
   const days = data.value?.days;
-  const from = days?.find((d) => d.date === fromDate);
+  const from = days?.find((d) => d.sessions.some((s) => s.id === sessionId));
   const to = days?.find((d) => d.date === toDate);
-  if (!days || !from?.session || !to) return;
+  const session = from?.sessions.find((s) => s.id === sessionId);
+  if (!days || !from || !to || !session || from === to) return;
 
   moveError.value = null;
   hasDragged.value = true;
-  const sessionId = from.session.id;
 
-  // Swap locally first so the card lands where it was dropped instead of
+  // Move it locally first so the card lands where it was dropped instead of
   // snapping back for the length of a round trip. Completion state can't be
   // re-derived here — it depends on which activities fall on which day — so
   // the response below replaces it a moment later.
-  const previous = [from.session, to.session] as const;
-  from.session = previous[1];
-  to.session = previous[0];
+  from.sessions = from.sessions.filter((s) => s.id !== sessionId);
+  to.sessions = [...to.sessions, session];
 
   try {
     data.value = await $fetch("/api/plan-sessions/move", {
@@ -149,8 +147,6 @@ async function moveSession(fromDate: string, toDate: string) {
       body: { sessionId, toDate },
     });
   } catch (e) {
-    from.session = previous[0];
-    to.session = previous[1];
     // $fetch stringifies to '[POST] "/api/…": 500 …'; the useful part is the
     // statusMessage the endpoint set, which rides along on `data`.
     const detail = (e as { data?: { statusMessage?: string } })?.data?.statusMessage;

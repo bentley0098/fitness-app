@@ -17,7 +17,10 @@
 
         <ul class="space-y-2">
           <li v-for="(r, i) in data.rows" :key="i" class="rounded-card border border-line bg-surface p-3.5 shadow-card">
-            <div class="text-xs font-semibold uppercase tracking-wide text-subtle">{{ formatDate(r.date, SHORT) }}<template v-if="r.toDate"> → {{ formatDate(r.toDate, SHORT) }}</template></div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-subtle">
+              <template v-if="r.date">{{ formatDate(r.date, SHORT) }}<template v-if="r.toDate"> → {{ formatDate(r.toDate, SHORT) }}</template></template>
+              <template v-else>{{ LIBRARY_LABELS[r.kind] ?? "Change" }}</template>
+            </div>
             <p v-if="r.before" class="mt-1 text-sm text-subtle" :class="{ 'line-through': r.before !== r.after }">{{ r.before }}</p>
             <p v-if="r.after && r.after !== r.before" class="text-sm font-semibold text-ink">{{ r.after }}</p>
             <p v-else-if="!r.after" class="text-sm font-semibold text-verdict-stop">Removed</p>
@@ -76,6 +79,12 @@ async function decide(action: "approve" | "reject") {
     await refresh();
   }
 }
+
+const LIBRARY_LABELS: Record<string, string> = {
+  addExercise: "New exercise",
+  createTemplate: "New template",
+  updateTemplate: "Template change",
+};
 
 const LABELS: Record<string, string> = {
   pending: "Waiting for your approval",

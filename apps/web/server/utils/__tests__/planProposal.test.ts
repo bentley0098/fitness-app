@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SENTINEL_DATE, isExpired, planApply, selectSuperseded, snapshotOperations, type Operation, type OperationRequest, type PlannerSession } from "../planProposal";
+import { isExpired, planApply, selectSuperseded, snapshotOperations, type Operation, type OperationRequest, type PlannerSession, type PlanLibrary } from "../planProposal";
 
 // Week of Mon 2026-09-21 .. Sun 2026-09-27.
 const WED = "2026-09-23";
@@ -97,10 +97,10 @@ describe("update operation fields", () => {
   });
 });
 
-function plan(sessions: PlannerSession[], requests: OperationRequest[]) {
-  const ops = snapshotOperations(sessions, requests);
+function plan(sessions: PlannerSession[], requests: OperationRequest[], library?: PlanLibrary) {
+  const ops = snapshotOperations(sessions, requests, library);
   if (!ops.ok) throw new Error(ops.message);
-  return planApply(sessions, ops.operations);
+  return planApply(sessions, ops.operations, library);
 }
 
 describe("move operations", () => {
@@ -119,27 +119,14 @@ describe("move operations", () => {
     ]);
   });
 
-  it("swaps with whatever already sits on the target day", () => {
+  it("lands on an occupied day and leaves the session already there alone", () => {
     const result = plan([wed, fri], [{ kind: "move", sessionId: "s-wed", toDate: FRI }]);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.after.find((s) => s.id === "s-wed")?.date).toBe(FRI);
-    expect(result.after.find((s) => s.id === "s-fri")?.date).toBe(WED);
-    expect(result.after.map((s) => s.revision)).toEqual([2, 2]);
-  });
-
-  it("never leaves two sessions on one date while the writes run", () => {
-    const result = plan([wed, fri], [{ kind: "move", sessionId: "s-wed", toDate: FRI }]);
-    if (!result.ok) throw new Error(result.message);
-
-    const dates = new Map([wed, fri].map((s) => [s.id, s.date]));
-    for (const w of result.writes) {
-      if (w.kind === "update" && w.fields.date) dates.set(w.id, w.fields.date);
-      const real = [...dates.values()].filter((d) => d !== SENTINEL_DATE);
-      expect(new Set(real).size).toBe(real.length);
-    }
-    expect(Object.fromEntries(dates)).toEqual({ "s-wed": FRI, "s-fri": WED });
+    expect(result.after.find((s) => s.id === "s-wed")).toMatchObject({ date: FRI, revision: 2 });
+    expect(result.after.find((s) => s.id === "s-fri")).toMatchObject({ date: FRI, revision: 1 });
+    expect(result.writes).toHaveLength(1);
   });
 
   it("bumps a session's revision once when it is both changed and moved", () => {
@@ -157,13 +144,13 @@ describe("move operations", () => {
     expect(result).toMatchObject({ ok: false, reason: "invalid" });
   });
 
-  it("refuses two sessions moved onto the same day", () => {
+  it("allows two sessions moved onto the same day", () => {
     const result = plan([wed, fri], [
       { kind: "move", sessionId: "s-wed", toDate: "2026-09-27" },
       { kind: "move", sessionId: "s-fri", toDate: "2026-09-27" },
     ]);
 
-    expect(result).toMatchObject({ ok: false, reason: "conflict" });
+    expect(result.ok && result.after.map((s) => s.date)).toEqual(["2026-09-27", "2026-09-27"]);
   });
 });
 
@@ -184,10 +171,10 @@ describe("add and remove operations", () => {
     expect(result.volume).toEqual([{ weekStart: "2026-09-21", beforeM: 5_000, afterM: 9_000 }]);
   });
 
-  it("refuses to add a session on a day that already has one", () => {
+  it("adds a session on a day that already has one", () => {
     const result = plan([wed], [{ ...newRun, date: WED }]);
 
-    expect(result).toMatchObject({ ok: false, reason: "conflict" });
+    expect(result.ok && result.after.filter((s) => s.date === WED)).toHaveLength(2);
   });
 
   it("removes a session and drops its distance from the week", () => {
@@ -293,29 +280,11 @@ describe("superseding", () => {
 
     expect(selectSuperseded([pending("p1", add(FRI)), pending("p2", add(WED))], [add(FRI)])).toEqual(["p1"]);
   });
-});
 
-describe("staleness of a swapped session", () => {
-  const wed = session({ id: "s-wed", date: WED });
-  const fri = session({ id: "s-fri", date: FRI });
-  const swap: OperationRequest[] = [{ kind: "move", sessionId: "s-wed", toDate: FRI }];
+  it("keeps a pending add of a different kind of session on the same day", () => {
+    const add = (type: string): Operation => ({ kind: "add", date: FRI, phase: "base", type, prescription: {}, sessionDate: FRI });
 
-  it("refuses when the session being swapped out changed after the proposal", () => {
-    const ops = snapshotOperations([wed, fri], swap);
-    if (!ops.ok) throw new Error(ops.message);
-
-    const result = planApply([wed, { ...fri, revision: 2 }], ops.operations);
-
-    expect(result).toMatchObject({ ok: false, reason: "stale" });
-  });
-
-  it("refuses when a session appeared on the target day after the proposal", () => {
-    const ops = snapshotOperations([wed], swap);
-    if (!ops.ok) throw new Error(ops.message);
-
-    const result = planApply([wed, fri], ops.operations);
-
-    expect(result).toMatchObject({ ok: false, reason: "stale" });
+    expect(selectSuperseded([pending("p1", add("easy_run"))], [add("long_run")])).toEqual([]);
   });
 });
 
@@ -326,5 +295,207 @@ describe("weekly volume", () => {
     const result = plan([timed], [{ kind: "update", sessionId: "s-timed", patch: { prescription: { distanceKm: 5 } } }]);
 
     expect(result.ok && result.volume).toEqual([{ weekStart: "2026-09-21", beforeM: 0, afterM: 5_000 }]);
+  });
+});
+
+describe("strength sessions in a proposal", () => {
+  const run = session({ id: "s-run", date: WED, prescription: { distanceKm: 5 } });
+  const gym = session({ id: "s-gym", date: WED, type: "strength_gym", prescription: { templateId: "t1", templateName: "Gym A" } });
+
+  it("moves like any other session, leaving the run on the day alone", () => {
+    const result = plan([run, gym], [{ kind: "move", sessionId: "s-gym", toDate: FRI }]);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.after.find((s) => s.id === "s-gym")).toMatchObject({ date: FRI, revision: 2 });
+    expect(result.after.find((s) => s.id === "s-run")).toMatchObject({ date: WED, revision: 1 });
+  });
+
+  it("adds no distance to the week's volume, whether added, moved or removed", () => {
+    const library: PlanLibrary = { exercises: [], templates: [{ id: "t1", name: "Gym A", kind: "gym", updatedAt: "x", exerciseCount: 5 }] };
+    const added = plan([run], [{ kind: "add", date: FRI, phase: "base", type: "strength_gym", prescription: { templateName: "Gym A" } }], library);
+    const removed = plan([run, gym], [{ kind: "remove", sessionId: "s-gym" }]);
+
+    expect(added.ok && added.volume).toEqual([{ weekStart: "2026-09-21", beforeM: 5_000, afterM: 5_000 }]);
+    expect(removed.ok && removed.volume).toEqual([{ weekStart: "2026-09-21", beforeM: 5_000, afterM: 5_000 }]);
+  });
+
+  it("refuses a change to a strength session that was edited since the proposal", () => {
+    const ops = snapshotOperations([gym], [{ kind: "remove", sessionId: "s-gym" }]);
+    if (!ops.ok) throw new Error(ops.message);
+
+    expect(planApply([{ ...gym, revision: 2 }], ops.operations)).toMatchObject({ ok: false, reason: "stale" });
+  });
+
+  it("keeps a pending add of a strength session when a run is added on the same day", () => {
+    const add = (type: string): Operation => ({ kind: "add", date: FRI, phase: "base", type, prescription: {}, sessionDate: FRI });
+
+    expect(selectSuperseded([{ id: "p1", operations: [add("strength_gym")] }], [add("easy_run")])).toEqual([]);
+  });
+
+  it("keeps a pending add of one template when a different template is added the same day", () => {
+    const add = (templateId: string): Operation => ({ kind: "add", date: FRI, phase: "base", type: "strength_gym", prescription: { templateId }, sessionDate: FRI });
+
+    expect(selectSuperseded([{ id: "p1", operations: [add("gym-a")] }], [add("gym-b")])).toEqual([]);
+    expect(selectSuperseded([{ id: "p1", operations: [add("gym-a")] }], [add("gym-a")])).toEqual(["p1"]);
+  });
+});
+
+describe("strength operations", () => {
+  const library: PlanLibrary = {
+    exercises: [
+      { name: "Bench press", measure: "reps" },
+      { name: "Chest-supported row", measure: "reps" },
+      { name: "Side plank", measure: "hold" },
+    ],
+    templates: [{ id: "t-gym-a", name: "Gym A", kind: "gym", updatedAt: "2026-10-01T00:00:00Z", exerciseCount: 5 }],
+  };
+  const slot = (exercise: string, over: Record<string, unknown> = {}) => ({ exercise, sets: 3, repsMin: 8, repsMax: 8, ...over });
+  const addGym = (date: string, templateName = "Gym A") => ({
+    kind: "add" as const,
+    date,
+    phase: "base",
+    type: "strength_gym",
+    prescription: { templateName },
+  });
+
+  it("adds an exercise to the library", () => {
+    const result = plan([], [{ kind: "addExercise", name: "Face pull", measure: "reps" }], library);
+
+    expect(result.ok && result.libraryWrites).toEqual([
+      { kind: "addExercise", name: "Face pull", measure: "reps", perSide: false, note: null, restSeconds: null },
+    ]);
+  });
+
+  it("refuses an exercise whose name is already taken, whatever its case", () => {
+    const result = plan([], [{ kind: "addExercise", name: " bench  PRESS ", measure: "reps" }], library);
+
+    expect(result).toMatchObject({ ok: false, reason: "conflict" });
+  });
+
+  it("creates a template from existing exercises, with a superset", () => {
+    const result = plan(
+      [],
+      [{ kind: "createTemplate", name: "Gym C", templateKind: "gym", slots: [slot("Bench press", { supersetGroup: 1 }), slot("Chest-supported row", { supersetGroup: 1 })] }],
+      library,
+    );
+
+    expect(result.ok && result.libraryWrites[0]).toMatchObject({ kind: "createTemplate", name: "Gym C", templateKind: "gym" });
+    expect(result.ok && result.libraryWrites[0]).toMatchObject({ slots: [{ exercise: "Bench press", supersetGroup: 1 }, { exercise: "Chest-supported row", supersetGroup: 1 }] });
+  });
+
+  it("lets a template use an exercise added earlier in the same proposal", () => {
+    const result = plan(
+      [],
+      [
+        { kind: "addExercise", name: "Face pull", measure: "reps" },
+        { kind: "createTemplate", name: "Gym C", templateKind: "gym", slots: [slot("face pull")] },
+      ],
+      library,
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("refuses a template that uses an exercise nobody has added", () => {
+    const result = plan([], [{ kind: "createTemplate", name: "Gym C", templateKind: "gym", slots: [slot("Face pull")] }], library);
+
+    expect(result).toMatchObject({ ok: false, reason: "invalid" });
+    expect(!result.ok && result.message).toMatch(/Face pull/);
+  });
+
+  it("refuses a template that breaks the editor's rules, and one whose name is taken", () => {
+    const backwards = plan([], [{ kind: "createTemplate", name: "Gym C", templateKind: "gym", slots: [slot("Bench press", { repsMin: 10, repsMax: 8 })] }], library);
+    const taken = plan([], [{ kind: "createTemplate", name: "gym a", templateKind: "gym", slots: [slot("Bench press")] }], library);
+
+    expect(backwards).toMatchObject({ ok: false, reason: "invalid" });
+    expect(taken).toMatchObject({ ok: false, reason: "conflict" });
+  });
+
+  it("replaces a template's exercises", () => {
+    const result = plan([], [{ kind: "updateTemplate", templateId: "t-gym-a", slots: [slot("Bench press")] }], library);
+
+    expect(result.ok && result.libraryWrites).toEqual([
+      { kind: "updateTemplate", id: "t-gym-a", name: undefined, slots: [expect.objectContaining({ exercise: "Bench press" })] },
+    ]);
+  });
+
+  it("refuses to change a template that was edited after the proposal", () => {
+    const ops = snapshotOperations([], [{ kind: "updateTemplate", templateId: "t-gym-a", name: "Gym Alpha" }], library);
+    if (!ops.ok) throw new Error(ops.message);
+    const editedSince: PlanLibrary = { ...library, templates: [{ ...library.templates[0]!, updatedAt: "2026-10-05T00:00:00Z" }] };
+
+    expect(planApply([], ops.operations, editedSince)).toMatchObject({ ok: false, reason: "stale" });
+  });
+
+  it("refuses to update a template that doesn't exist", () => {
+    expect(snapshotOperations([], [{ kind: "updateTemplate", templateId: "ghost", name: "x" }], library)).toMatchObject({ ok: false, reason: "missing" });
+  });
+
+  it("schedules a strength session from an existing template, leaving run volume alone", () => {
+    const run = session({ id: "s-run", date: FRI, prescription: { distanceKm: 5 } });
+    const result = plan([run], [addGym(FRI)], library);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.after.filter((s) => s.date === FRI)).toHaveLength(2);
+    expect(result.volume).toEqual([{ weekStart: "2026-09-21", beforeM: 5_000, afterM: 5_000 }]);
+    expect(result.writes).toContainEqual(
+      expect.objectContaining({ kind: "insert", fields: expect.objectContaining({ type: "strength_gym", prescription: { templateName: "Gym A" } }) }),
+    );
+  });
+
+  it("schedules a session from a template created in the same proposal", () => {
+    const result = plan(
+      [],
+      [{ kind: "createTemplate", name: "Gym C", templateKind: "gym", slots: [slot("Bench press")] }, addGym(FRI, "gym c")],
+      library,
+    );
+
+    expect(result.ok && result.writes).toContainEqual(expect.objectContaining({ fields: expect.objectContaining({ prescription: { templateName: "Gym C" } }) }));
+  });
+
+  it("refuses a strength session with no such template, or the wrong kind of template", () => {
+    expect(plan([], [addGym(FRI, "Gym Z")], library)).toMatchObject({ ok: false, reason: "invalid" });
+    expect(plan([], [{ ...addGym(FRI), type: "strength_physio" }], library)).toMatchObject({ ok: false, reason: "invalid" });
+    expect(plan([], [{ ...addGym(FRI), prescription: {} }], library)).toMatchObject({ ok: false, reason: "invalid" });
+  });
+
+  it("does not let an update turn a run into strength or the other way round", () => {
+    const run = session({ id: "s-run", date: FRI });
+    const gym = session({ id: "s-gym", date: FRI, type: "strength_gym", prescription: { templateName: "Gym A" } });
+
+    expect(plan([run], [{ kind: "update", sessionId: "s-run", patch: { type: "strength_gym" } }], library)).toMatchObject({ ok: false, reason: "invalid" });
+    expect(plan([gym], [{ kind: "update", sessionId: "s-gym", patch: { type: "easy_run" } }], library)).toMatchObject({ ok: false, reason: "invalid" });
+  });
+
+  it("applies none of a proposal when one library operation is wrong", () => {
+    const result = plan(
+      [],
+      [{ kind: "addExercise", name: "Face pull", measure: "reps" }, addGym(FRI, "Gym Z")],
+      library,
+    );
+
+    expect(result).toMatchObject({ ok: false });
+  });
+
+  it("never expires a proposal that only touches the library", () => {
+    const ops = snapshotOperations([], [{ kind: "addExercise", name: "Face pull", measure: "reps" }], library);
+    if (!ops.ok) throw new Error(ops.message);
+
+    expect(isExpired(ops.operations, "2030-01-01")).toBe(false);
+  });
+
+  it("supersedes a pending proposal creating the same template or exercise, and no other", () => {
+    const create = (name: string): Operation => ({ kind: "createTemplate", name, templateKind: "gym", slots: [] });
+    const exercise = (name: string): Operation => ({ kind: "addExercise", name, measure: "reps" });
+    const pending = [
+      { id: "p1", operations: [create("Gym C")] },
+      { id: "p2", operations: [create("Gym D")] },
+      { id: "p3", operations: [exercise("Face pull")] },
+    ];
+
+    expect(selectSuperseded(pending, [create(" gym c ")])).toEqual(["p1"]);
+    expect(selectSuperseded(pending, [exercise("FACE PULL")])).toEqual(["p3"]);
   });
 });

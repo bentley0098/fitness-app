@@ -44,6 +44,7 @@ const ICONS: Record<string, IconDef> = {
   rest: { paths: ["M4 12h16"] },
   alert: { paths: ["M12 8v5", "M12 17h.01", "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0"] },
   refresh: { paths: ["M21 12a9 9 0 1 1-3-6.7", "M21 4v5h-5"] },
+  dumbbell: { paths: ["M6.5 6.5v11", "M17.5 6.5v11", "M3.5 9v6", "M20.5 9v6", "M6.5 12h11"] },
   clock: { paths: ["M12 7v5l3 2"], circles: [[12, 12, 9]] },
 };
 

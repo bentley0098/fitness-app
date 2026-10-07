@@ -24,8 +24,8 @@
 interface Day {
   date: string;
   isToday: boolean;
-  session: unknown | null;
-  completion: { state: string };
+  sessions: { completion: { state: string } }[];
+  unplanned: { state: string };
 }
 
 withDefaults(defineProps<{ days: Day[]; selectable?: boolean }>(), { selectable: false });
@@ -35,19 +35,13 @@ defineEmits<{ select: [date: string] }>();
 // for partial, red for missed, outlined for a session still ahead, and nothing
 // at all for a rest day.
 function dotClass(day: Day): string {
-  switch (day.completion.state) {
-    case "completed":
-      return "bg-verdict-progress";
-    case "partial":
-      return "bg-verdict-hold";
-    case "missed":
-      return "bg-verdict-regress";
-    case "unplanned":
-      return "bg-accent-300";
-    case "rest":
-      return "bg-transparent";
-    default:
-      return day.session ? "bg-line-strong" : "bg-transparent";
+  const states = day.sessions.map((s) => s.completion.state);
+  if (states.length === 0) return day.unplanned.state === "unplanned" ? "bg-accent-300" : "bg-transparent";
+  // The dot reads as the least finished session of the day.
+  for (const state of ["missed", "partial"]) {
+    if (states.includes(state)) return state === "missed" ? "bg-verdict-regress" : "bg-verdict-hold";
   }
+  if (states.every((state) => state === "completed")) return "bg-verdict-progress";
+  return "bg-line-strong";
 }
 </script>

@@ -51,9 +51,11 @@ const props = withDefaults(
     variant?: ChartVariant;
     area?: boolean;
     compact?: boolean;
+    /** Scale to the series' own range instead of from zero, without shrinking the chart. */
+    fit?: boolean;
     showBaseline?: boolean;
   }>(),
-  { variant: "accent", area: false, compact: false, showBaseline: true },
+  { variant: "accent", area: false, compact: false, fit: false, showBaseline: true },
 );
 
 const palette = computed(() => PALETTES[props.variant] ?? PALETTES.accent);
@@ -70,7 +72,7 @@ const maxVal = computed(() => Math.max(...(values.value.length ? values.value : 
 // Sparklines of a narrow series (resting HR hovering 53-57) are flat against a
 // zero floor, so compact charts scale to their own range instead.
 const minVal = computed(() => {
-  const floor = props.compact ? Math.min(...(values.value.length ? values.value : [0])) : 0;
+  const floor = props.compact || props.fit ? Math.min(...(values.value.length ? values.value : [0])) : 0;
   return Math.min(...(values.value.length ? values.value : [0]), props.band?.min ?? floor, floor);
 });
 

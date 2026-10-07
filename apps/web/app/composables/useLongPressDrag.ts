@@ -28,6 +28,7 @@ export function useLongPressDrag({ container, onDrop }: LongPressDragOptions) {
 
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pendingKey: string | null = null;
+  let pendingOrigin: string | null = null;
   let startPoint: Point = { x: 0, y: 0 };
   let grabOffset: Point = { x: 0, y: 0 };
   let sourceSize = { width: 0, height: 0 };
@@ -129,7 +130,7 @@ export function useLongPressDrag({ container, onDrop }: LongPressDragOptions) {
     targets = snapshotTargets();
 
     activeKey.value = pendingKey;
-    overKey.value = pendingKey;
+    overKey.value = pendingOrigin;
     edgeArmed = false;
     ghost.value = { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
 
@@ -140,13 +141,21 @@ export function useLongPressDrag({ container, onDrop }: LongPressDragOptions) {
     if (scrollFrame === null) scrollFrame = requestAnimationFrame(edgeScroll);
   }
 
-  function onPointerDown(event: PointerEvent, key: string) {
+  /**
+   * `key` names what is being dragged; `originKey` is the drop target it starts
+   * over (defaults to `key`, for lists where the two are the same thing).
+   */
+  function onPointerDown(event: PointerEvent, key: string, originKey: string = key) {
     if (event.button !== 0 && event.pointerType === "mouse") return;
+    // A tap on a button or link inside a card is that control's, not a grab:
+    // capturing the pointer here would swallow its click.
+    if ((event.target as HTMLElement | null)?.closest("button, a, input, select, textarea")) return;
     const el = (event.currentTarget as HTMLElement) ?? null;
     if (!el) return;
 
     reset();
     pendingKey = key;
+    pendingOrigin = originKey;
     startPoint = { x: event.clientX, y: event.clientY };
 
     capturedEl = el;
@@ -201,6 +210,7 @@ export function useLongPressDrag({ container, onDrop }: LongPressDragOptions) {
     scrollFrame = null;
     edgeArmed = false;
     pendingKey = null;
+    pendingOrigin = null;
     targets = [];
     activeKey.value = null;
     overKey.value = null;

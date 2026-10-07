@@ -1,5 +1,5 @@
 import { db } from "../../utils/db";
-import { countsToward } from "../../utils/planCompletion";
+import { countsToward, sessionForEachActivity } from "../../utils/planCompletion";
 import { toPlanSessionDto, toActivityDto } from "../../utils/serialize";
 
 type Raw = Record<string, any>;
@@ -44,11 +44,15 @@ export default defineEventHandler(async (event) => {
   if (error) throw createError({ statusCode: 500, statusMessage: error.message });
   if (!row) throw createError({ statusCode: 404, statusMessage: "Activity not found" });
 
-  const [{ data: session }, { data: note }] = await Promise.all([
-    db.from("plan_sessions").select("*").eq("date", row.date).limit(1).maybeSingle(),
+  const [{ data: sessions }, { data: dayActivities }, { data: note }] = await Promise.all([
+    db.from("plan_sessions").select("*").eq("date", row.date),
+    db.from("activities").select("id, date, activity_type, distance_m, moving_time_s").eq("date", row.date),
     db.from("daily_notes").select("note, rpe").eq("date", row.date).maybeSingle(),
   ]);
 
+  // With several runs planned on the day, the activity counts towards the one
+  // it is closest to, the same way the plan screen pairs them.
+  const session = sessionForEachActivity((sessions ?? []) as any[], (dayActivities ?? []) as any[]).get(row.id) ?? null;
   const matched = session && countsToward(row as any, session.type);
 
   return {

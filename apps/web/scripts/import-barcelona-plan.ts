@@ -224,9 +224,10 @@ function toSql(rows: Row[]): string {
   return [
     "BEGIN;",
     "",
-    "-- Replaces the plan wholesale. plan_revisions rows cascade with their",
-    "-- session; run history lives in `activities` and is not touched.",
-    "DELETE FROM plan_sessions;",
+    "-- Replaces the run plan wholesale. plan_revisions rows cascade with their",
+    "-- session; run history lives in `activities` and is not touched. Strength",
+    "-- sessions share the table but are not part of this plan, so they stay.",
+    "DELETE FROM plan_sessions WHERE type NOT IN ('strength_gym', 'strength_physio');",
     "",
     "INSERT INTO plan_sessions (date, phase, type, prescription, cap, status, revision) VALUES",
     `${values};`,
@@ -250,7 +251,8 @@ async function main() {
     return;
   }
 
-  const { error: cleanupError } = await db.from("plan_sessions").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  // Runs only: strength sessions share the table but are not part of this plan.
+  const { error: cleanupError } = await db.from("plan_sessions").delete().not("type", "in", "(strength_gym,strength_physio)");
   if (cleanupError) throw new Error(`Cleanup failed: ${cleanupError.message}`);
 
   const { error } = await db.from("plan_sessions").insert(

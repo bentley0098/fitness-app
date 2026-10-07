@@ -1,4 +1,4 @@
-import { boolean, date, doublePrecision, integer, jsonb, pgTable, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, doublePrecision, integer, jsonb, pgTable, smallint, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 
 // Mirrors adaptive-training-plan-spec.md Section 4 (rewritten in the 9 Sept
 // 2026 pivot — Garmin recovery signals replace physio-supplied thresholds).
@@ -131,6 +131,107 @@ export const planProposals = pgTable("plan_proposals", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   decidedAt: timestamp("decided_at", { withTimezone: true }),
 });
+
+// Strength work. An exercise is a movement with a stable identity, so its
+// history can be followed across sessions and templates. name_key is the
+// case- and whitespace-insensitive form of the name (see exerciseKey in
+// server/utils/strength.ts) and is what uniqueness is enforced on.
+export const exercises = pgTable("exercises", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  nameKey: text("name_key").notNull().unique(),
+  measure: text("measure").notNull().default("reps"), // reps | hold
+  perSide: boolean("per_side").notNull().default(false),
+  note: text("note"),
+  restSeconds: integer("rest_seconds"), // null = the app default
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// A reusable, named, ordered list of exercises a strength session is started
+// from. Carries sets and reps (or hold time) per exercise, never a weight —
+// weight always comes from the last logged set.
+export const strengthTemplates = pgTable("strength_templates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name").notNull(),
+  nameKey: text("name_key").notNull().unique(),
+  kind: text("kind").notNull(), // gym | physio
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const strengthTemplateSlots = pgTable("strength_template_slots", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  templateId: uuid("template_id")
+    .notNull()
+    .references(() => strengthTemplates.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  exerciseId: uuid("exercise_id")
+    .notNull()
+    .references(() => exercises.id),
+  sets: integer("sets").notNull(),
+  repsMin: integer("reps_min"),
+  repsMax: integer("reps_max"),
+  holdSeconds: integer("hold_seconds"),
+  restSeconds: integer("rest_seconds"),
+  // Consecutive slots sharing a number are a superset.
+  supersetGroup: integer("superset_group"),
+  note: text("note"),
+});
+
+// The strength log: the runner's own record of a strength session. Starting one
+// copies the template's exercises into strength_log_exercises, so adding,
+// removing and swapping exercises mid-session never touches the template.
+export const strengthLogs = pgTable("strength_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  date: date("date").notNull(),
+  kind: text("kind").notNull(), // gym | physio
+  templateId: uuid("template_id").references(() => strengthTemplates.id, { onDelete: "set null" }),
+  // Kept so history still reads right if the template is later renamed or deleted.
+  templateName: text("template_name").notNull(),
+  // The planned session this log was started from, if any.
+  planSessionId: uuid("plan_session_id").references(() => planSessions.id, { onDelete: "set null" }),
+  status: text("status").notNull().default("in_progress"), // in_progress | finished
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const strengthLogExercises = pgTable("strength_log_exercises", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  logId: uuid("log_id")
+    .notNull()
+    .references(() => strengthLogs.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  exerciseId: uuid("exercise_id")
+    .notNull()
+    .references(() => exercises.id),
+  // How many set rows this exercise has in this session.
+  sets: integer("sets").notNull(),
+  repsMin: integer("reps_min"),
+  repsMax: integer("reps_max"),
+  holdSeconds: integer("hold_seconds"),
+  restSeconds: integer("rest_seconds"),
+  supersetGroup: integer("superset_group"),
+  note: text("note"),
+});
+
+// Only sets that were actually done have a row; the rest of a session's rows
+// are derived from the exercise's set count.
+export const strengthLogSets = pgTable(
+  "strength_log_sets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    logExerciseId: uuid("log_exercise_id")
+      .notNull()
+      .references(() => strengthLogExercises.id, { onDelete: "cascade" }),
+    setIndex: integer("set_index").notNull(),
+    reps: integer("reps"),
+    holdSeconds: integer("hold_seconds"),
+    weightKg: doublePrecision("weight_kg"), // null = bodyweight
+    loggedAt: timestamp("logged_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({ onePerSet: unique("strength_log_sets_exercise_set_unique").on(t.logExerciseId, t.setIndex) }),
+);
 
 // Not part of the spec's core tables — infrastructure for the Garmin
 // ingestion mechanism (Section 3 update). Single row, keyed by a fixed id,

@@ -10,9 +10,10 @@
 
 BEGIN;
 
--- Replaces the plan wholesale. plan_revisions rows cascade with their
--- session; run history lives in `activities` and is not touched.
-DELETE FROM plan_sessions;
+-- Replaces the run plan wholesale. plan_revisions rows cascade with their
+-- session; run history lives in `activities` and is not touched. Strength
+-- sessions share the table but are not part of this plan, so they stay.
+DELETE FROM plan_sessions WHERE type NOT IN ('strength_gym', 'strength_physio');
 
 INSERT INTO plan_sessions (date, phase, type, prescription, cap, status, revision) VALUES
   ('2026-09-10', 'ramp', 'walk_run_or_continuous', '{"durationMin":10,"ratio":"2:2"}'::jsonb, '{}'::jsonb, 'planned', 1),
