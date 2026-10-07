@@ -35,7 +35,7 @@
           <div v-for="day in daysOf(w.sessions)" :key="day.date" class="mt-1.5 flex items-start gap-3 text-sm first:mt-3">
             <span class="w-9 shrink-0" :class="day.sessions.every((s) => s.state === 'completed') ? 'text-verdict-progress' : 'text-subtle'">{{ weekdayShort(day.date) }}</span>
             <ul class="min-w-0 flex-1 space-y-1.5">
-              <li v-for="s in day.sessions" :key="s.id" class="flex items-stretch gap-2">
+              <li v-for="s in day.sessions" :key="s.id" class="flex items-stretch gap-2" :class="s.state === 'completed' ? 'opacity-50' : ''">
                 <span class="w-1 shrink-0 rounded-pill" :class="KIND_BAR[sessionKind(s.type)]" />
                 <span class="min-w-0 flex-1" :class="s.state === 'completed' ? DONE : 'text-ink'">{{ labelFor(s) }}</span>
               </li>
@@ -51,7 +51,7 @@
 import { computed, onMounted } from "vue";
 import { KIND_BAR, runsFirst, sessionKind } from "~/composables/sessionKind";
 
-const DONE = "text-verdict-progress line-through opacity-70";
+const DONE = "text-verdict-progress line-through";
 const SHORT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" };
 
 const { data, pending, error } = await useFetch("/api/plan-sessions", {
