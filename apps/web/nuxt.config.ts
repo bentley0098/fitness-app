@@ -12,7 +12,7 @@ export default defineNuxtConfig({
       meta: [
         { name: 'color-scheme', content: 'light dark' },
         { name: 'theme-color', content: '#F8FAFC', media: '(prefers-color-scheme: light)' },
-        { name: 'theme-color', content: '#121212', media: '(prefers-color-scheme: dark)' },
+        { name: 'theme-color', content: '#0C0C0C', media: '(prefers-color-scheme: dark)' },
         // `viewport-fit=cover` is what makes env(safe-area-inset-*) resolve to
         // anything on notched iPhones — the fixed tab bar depends on it.
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' }

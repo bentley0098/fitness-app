@@ -66,13 +66,13 @@
 .dark {
   color-scheme: dark;
 
-  --c-canvas: 18 18 18; /* neutral grey */
-  --c-surface: 28 28 28;
-  --c-raised: 42 42 42;
-  --c-hero: 44 44 44;
+  --c-canvas: 12 12 12; /* neutral grey */
+  --c-surface: 22 22 22;
+  --c-raised: 34 34 34;
+  --c-hero: 36 36 36;
 
-  --c-line: 44 44 44;
-  --c-line-strong: 64 64 64;
+  --c-line: 38 38 38;
+  --c-line-strong: 56 56 56;
 
   --c-ink: 245 245 245;
   --c-ink-muted: 163 163 163;
@@ -93,7 +93,7 @@
   --c-regress-soft: 67 20 7;
   --c-stop: 248 113 113;
   --c-stop-soft: 69 10 10;
-  --c-on-solid: 18 18 18; /* verdict fills are bright here, so text on them goes dark */
+  --c-on-solid: 12 12 12; /* verdict fills are bright here, so text on them goes dark */
 }
 
 html {

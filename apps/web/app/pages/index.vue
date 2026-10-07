@@ -1,8 +1,7 @@
 <template>
   <div>
-    <!-- The strip sits on its own panel; a grey wash fades out from its lower
-         edge down the page, behind the cards. -->
-    <div class="relative">
+    <!-- The header and week strip sit together on their own panel. -->
+    <div>
       <div class="rounded-b-3xl border-b border-line bg-surface px-4 pb-3 pt-4 shadow-card">
         <header class="mb-3 flex items-baseline justify-between">
           <div>
@@ -40,10 +39,9 @@
           @swipe="changeWeek"
         />
       </div>
-      <div class="pointer-events-none absolute inset-x-0 top-full h-72 bg-gradient-to-b from-raised to-canvas" aria-hidden="true" />
     </div>
 
-    <div class="relative space-y-4 p-4">
+    <div class="space-y-4 p-4">
       <ProposalBanner />
 
       <AsyncState :pending="pending && !initial" :error="error" title="Couldn't load your week" :skeletons="3">
