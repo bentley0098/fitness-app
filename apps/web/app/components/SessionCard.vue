@@ -61,11 +61,6 @@
     </div>
 
     <p v-if="session?.changedBecause" class="mt-2 text-xs text-verdict-hold">{{ session.changedBecause }}</p>
-
-    <!-- Engine approval state is separate from whether the run happened. -->
-    <div v-if="session?.status === 'pending'" class="mt-2">
-      <StatPill tone="warn" icon="alert" label="Revision pending approval" />
-    </div>
   </div>
 </template>
 

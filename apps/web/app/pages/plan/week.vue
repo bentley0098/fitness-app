@@ -10,6 +10,8 @@
       </p>
     </header>
 
+    <ProposalBanner />
+
     <AsyncState :pending="pending" :error="error" title="Couldn't load your plan" :skeletons="5">
       <template v-if="data">
         <WeekNav :week="data.week" :nav="data.nav" :total-weeks="data.race.totalWeeks" @navigate="goToWeek" />

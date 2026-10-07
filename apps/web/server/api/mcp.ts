@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody(event);
-  const server = createMcpServer();
+  const server = createMcpServer(getRequestURL(event).origin);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
   try {

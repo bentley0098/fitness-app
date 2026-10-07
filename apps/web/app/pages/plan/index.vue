@@ -4,6 +4,8 @@
       <h1 class="text-xl font-bold text-ink">Your plan</h1>
     </header>
 
+    <ProposalBanner />
+
     <AsyncState :pending="pending" :error="error" title="Couldn't load your plan" :skeletons="5">
       <template v-if="data">
         <RaceCountdown :race="data.race" :phase="currentPhase" />

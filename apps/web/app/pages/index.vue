@@ -27,6 +27,8 @@
       {{ syncMessage }}
     </p>
 
+    <ProposalBanner />
+
     <AsyncState :pending="pending" :error="error" title="Couldn't load your dashboard" :skeletons="4">
       <template v-if="data">
         <RaceCountdown :race="data.race" :phase="data.week.phase" />

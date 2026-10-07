@@ -57,6 +57,27 @@
       "when": 1791141361770,
       "tag": "0007_wide_genesis",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791380932586,
+      "tag": "0008_broad_newton_destine",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791381197532,
+      "tag": "0009_retire_pending_session_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791381407633,
+      "tag": "0010_petite_major_mapleleaf",
+      "breakpoints": true
     }
   ]
 }
