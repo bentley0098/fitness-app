@@ -4,9 +4,11 @@
 
 **Blocked by:** 03, 10
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Running the seed puts the scheduled sessions on the right weekdays through the week before race week
-- [ ] Re-running the seed neither duplicates nor touches other sessions
-- [ ] Running the plan import leaves planned strength sessions in place
-- [ ] Seeded sessions carry the week's phase and no run rows are modified
+- [x] Running the seed puts the scheduled sessions on the right weekdays through the week before race week
+- [x] Re-running the seed neither duplicates nor touches other sessions
+- [x] Running the plan import leaves planned strength sessions in place
+- [x] Seeded sessions carry the week's phase and no run rows are modified
+
+Note: the scheduling half of `npm run strength:seed` has not been run against your database (it needs migrations 0011 and 0012 applied first).
