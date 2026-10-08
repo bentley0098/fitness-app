@@ -93,6 +93,8 @@
           </section>
         </template>
       </AsyncState>
+
+      <HomeProgressCards v-if="progress" :data="progress" />
     </div>
   </div>
 </template>
@@ -105,6 +107,8 @@ import { runsFirst } from "~/composables/sessionKind";
 const DAY_FORMAT: Intl.DateTimeFormatOptions = { weekday: "long", day: "numeric", month: "short" };
 
 const { data: initial, pending, error, refresh } = await useFetch("/api/plan-sessions");
+// Below the fold, so it loads after the week and never blocks it.
+const { data: progress } = useFetch("/api/dashboard", { lazy: true, server: false });
 type WeekData = NonNullable<typeof initial.value>;
 
 // Weeks already loaded, by Monday. The strip shows the previous, current and
