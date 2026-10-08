@@ -4,30 +4,9 @@ import {
   PLAN_START_MONDAY,
   RACE_DATE,
   TOTAL_WEEKS,
-  mondayOf,
-  weekDates,
   weekNumberFor,
   weekStartForNumber,
 } from "../planMeta";
-
-// Every anchor here is asserted against the real calendar, because the whole
-// reason this module exists is that the import script's "monday" values
-// weren't Mondays.
-describe("mondayOf", () => {
-  it("returns the date itself for a Monday", () => {
-    expect(mondayOf("2026-09-21")).toBe("2026-09-21");
-  });
-
-  it("backtracks from mid-week", () => {
-    expect(mondayOf("2026-09-22")).toBe("2026-09-21"); // Tue
-    expect(mondayOf("2026-09-25")).toBe("2026-09-21"); // Fri
-  });
-
-  it("treats Sunday as the END of its week, not the start", () => {
-    expect(mondayOf("2026-09-27")).toBe("2026-09-21");
-    expect(mondayOf("2027-03-14")).toBe("2027-03-08"); // race day
-  });
-});
 
 describe("weekNumberFor", () => {
   it("places the plan's landmark dates in the right weeks", () => {
@@ -68,24 +47,5 @@ describe("weekStartForNumber", () => {
   it("clamps out-of-range input", () => {
     expect(weekStartForNumber(0)).toBe(weekStartForNumber(1));
     expect(weekStartForNumber(99)).toBe(LAST_WEEK_START);
-  });
-});
-
-describe("weekDates", () => {
-  it("returns seven days Monday-first", () => {
-    expect(weekDates("2026-09-24")).toEqual([
-      "2026-09-21",
-      "2026-09-22",
-      "2026-09-23",
-      "2026-09-24",
-      "2026-09-25",
-      "2026-09-26",
-      "2026-09-27",
-    ]);
-  });
-
-  it("covers race day in week 27", () => {
-    expect(weekDates(RACE_DATE)).toContain(RACE_DATE);
-    expect(weekDates(RACE_DATE)[0]).toBe("2027-03-08");
   });
 });

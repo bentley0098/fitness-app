@@ -18,6 +18,10 @@ _Avoid_: Suggestion, draft
 A workout recorded by the Garmin watch and synced in, used to judge whether a planned session was done.
 _Avoid_: Workout, log
 
+**Today**:
+The runner's current calendar date in their own timezone, which follows their device and falls back to Irish time when no device is involved. Every date in the app is a plain calendar date, and an activity's date is the one the watch recorded locally.
+_Avoid_: Now, current date
+
 ### Strength
 
 **Strength session**:

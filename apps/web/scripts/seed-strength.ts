@@ -12,8 +12,8 @@
 //
 // Run with: npm run strength:seed
 import { db, withJwtRetry } from "../server/utils/db";
-import { isoDate } from "../server/utils/dates";
-import { RACE_DATE, mondayOf } from "../server/utils/planMeta";
+import { mondayOf, today as todayIn } from "../shared/utils/calendar";
+import { RACE_DATE } from "../server/utils/planMeta";
 import { isStrengthType } from "../server/utils/planLabels";
 import { exerciseKey } from "../server/utils/strength";
 import { planSeed } from "../server/utils/strengthSeed";
@@ -86,7 +86,7 @@ async function main() {
 }
 
 async function schedule() {
-  const today = isoDate(new Date());
+  const today = todayIn(new Date());
 
   const [{ data: templates, error: tErr }, { data: sessions, error: sErr }, { data: logs, error: lErr }] = await Promise.all([
     withJwtRetry(() => db.from("strength_templates").select("id, name")),

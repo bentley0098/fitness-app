@@ -1,5 +1,4 @@
 import { db } from "./db";
-import { isoDate } from "./dates";
 import {
   buildRows,
   exerciseKey,
@@ -60,7 +59,7 @@ function toLogSlot(row: Record<string, any>): TemplateSlot {
  * Starts a session from a template, copying its exercises into the log. Starting
  * from a planned session that already has one in progress resumes that one.
  */
-export async function startLog(input: { templateId: string; planSessionId?: string | null; date?: string }): Promise<string> {
+export async function startLog(input: { templateId: string; planSessionId?: string | null; date: string }): Promise<string> {
   if (input.planSessionId) {
     const { data: existing, error } = await db
       .from("strength_logs")
@@ -86,7 +85,7 @@ export async function startLog(input: { templateId: string; planSessionId?: stri
   const { data: log, error: lErr } = await db
     .from("strength_logs")
     .insert({
-      date: input.date ?? isoDate(new Date()),
+      date: input.date,
       kind: template.kind,
       template_id: template.id,
       template_name: template.name,

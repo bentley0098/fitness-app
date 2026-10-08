@@ -7,7 +7,7 @@ export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, "id");
   if (!id) throw createError({ statusCode: 400, statusMessage: "Missing session id" });
 
-  const session = buildPlannedSession(await loadPlanSnapshot(), id);
+  const session = buildPlannedSession(await loadPlanSnapshot(requestToday(event)), id);
   if (!session) throw createError({ statusCode: 404, statusMessage: "Planned session not found" });
 
   const template = session.templateId ? await viewTemplate(session.templateId).catch(() => null) : null;

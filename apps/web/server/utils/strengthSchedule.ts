@@ -1,5 +1,4 @@
-import { addDaysIso } from "./dates";
-import { mondayOf } from "./planMeta";
+import { addDaysIso, mondayOf, weekdayIndex } from "../../shared/utils/calendar";
 import { SEED_TEMPLATES } from "./strengthSeed";
 
 // When the seeded routines fall in the plan, and how a re-run of the seed
@@ -27,11 +26,6 @@ const WEEKLY_PATTERN: { weekday: number; template: string }[] = [
 
 const KIND_BY_TEMPLATE = new Map(SEED_TEMPLATES.map((t) => [t.name, t.kind]));
 
-function weekday(iso: string): number {
-  const day = new Date(`${iso}T00:00:00Z`).getUTCDay(); // 0 = Sunday
-  return day === 0 ? 6 : day - 1;
-}
-
 /**
  * The seeded routines on their weekdays, from today through the Sunday before
  * race week. Each takes the phase of its week in the plan, or the last phase
@@ -50,7 +44,7 @@ export function planStrengthSchedule(input: {
     const phase = input.phaseForWeek(mondayOf(date));
     if (phase) lastPhase = phase;
 
-    for (const entry of WEEKLY_PATTERN.filter((p) => p.weekday === weekday(date))) {
+    for (const entry of WEEKLY_PATTERN.filter((p) => p.weekday === weekdayIndex(date))) {
       const kind = KIND_BY_TEMPLATE.get(entry.template);
       if (!kind) continue;
       scheduled.push({
