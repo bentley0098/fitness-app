@@ -2,9 +2,9 @@ import { computeWorkloadRatio, evaluate } from "@fitness/engine";
 import { addDaysIso, isoDate } from "./dates";
 import { db } from "./db";
 import { loadTrainingWindow } from "./trainingData";
-import { buildDay, sessionsByDate, totalsFor } from "./planCompletion";
+import { RUN_TYPES, buildDay, sessionsByDate, totalsFor } from "./planCompletion";
 import { loadStrengthLogsLike } from "./strengthLogs";
-import { mondayOf, weekDates, weekEndForStart, weekNumberFor } from "./planMeta";
+import { PLAN_START_MONDAY, mondayOf, weekDates, weekEndForStart, weekNumberFor } from "./planMeta";
 import { raceInfo } from "./planView";
 import { selectTolerant } from "./optionalColumns";
 import {
@@ -78,6 +78,18 @@ async function loadRacePredictions(today: string): Promise<RacePredictionRow[]> 
   return error ? [] : ((data ?? []) as RacePredictionRow[]);
 }
 
+/** Every marathon prediction since the plan began, oldest first. */
+async function loadMarathonHistory(): Promise<{ date: string; seconds: number }[]> {
+  const { data, error } = await db
+    .from("race_predictions")
+    .select("date, time_marathon_s")
+    .gte("date", PLAN_START_MONDAY)
+    .not("time_marathon_s", "is", null)
+    .order("date", { ascending: true });
+  if (error) return [];
+  return (data ?? []).map((r: any) => ({ date: r.date, seconds: r.time_marathon_s as number }));
+}
+
 function racePredictionsDto(rows: RacePredictionRow[]) {
   const latest = rows[0];
   if (!latest) return null;
@@ -114,7 +126,16 @@ export async function buildDashboard() {
   // Three narrow queries alongside the window. The window's health metrics are
   // mapped to the ENGINE's type, which deliberately has no sleep fields — so
   // the raw rows are fetched separately for display.
-  const [{ data: metricRows }, { data: planRows }, { data: recentRows }, vo2Rows, raceRows, strengthLogs] = await Promise.all([
+  const [
+    { data: metricRows },
+    { data: planRows },
+    { data: recentRows },
+    vo2Rows,
+    raceRows,
+    strengthLogs,
+    marathonHistory,
+    { data: allPlanRows },
+  ] = await Promise.all([
     selectTolerant("daily_health_metrics", HEALTH_METRIC_COLUMNS, HEALTH_METRIC_BASE_COLUMNS, (cols) =>
       db
         .from("daily_health_metrics")
@@ -130,6 +151,8 @@ export async function buildDashboard() {
     loadVo2Series(),
     loadRacePredictions(today),
     loadStrengthLogsLike(),
+    loadMarathonHistory(),
+    db.from("plan_sessions").select("*").gte("date", PLAN_START_MONDAY).lte("date", today),
   ]);
 
   const metrics = (metricRows ?? []).map(toHealthMetricsDto);
@@ -190,6 +213,24 @@ export async function buildDashboard() {
     };
   });
 
+  // ---- Since week one --------------------------------------------------
+  // Same matchDay machinery as the weekly chart, so the totals agree with it.
+  const allSessionsOn = sessionsByDate((allPlanRows ?? []) as any[]);
+  const planDays: ReturnType<typeof buildDay>[] = [];
+  for (let d = PLAN_START_MONDAY; d <= today; d = addDaysIso(d, 1)) {
+    planDays.push(buildDay(d, allSessionsOn.get(d) ?? [], activityRows as any, today, strengthLogs));
+  }
+  const sinceStart = totalsFor(planDays);
+  const planActivities = activityRows.filter((a) => a.date >= PLAN_START_MONDAY && RUN_TYPES.has((a.activityType ?? "").toLowerCase()));
+  const totals = {
+    distanceM: sinceStart.actualDistanceM,
+    movingTimeS: sinceStart.actualMovingTimeS,
+    runs: planActivities.length,
+    longestRunM: planActivities.reduce((max, a) => Math.max(max, a.distanceM ?? 0), 0),
+    strengthSessions: strengthLogs.filter((l) => l.status === "finished" && l.date >= PLAN_START_MONDAY).length,
+    weeksDone: weekNumberFor(today) - 1,
+  };
+
   return {
     asOfDate: today,
     verdict: evaluation.verdict,
@@ -246,6 +287,8 @@ export async function buildDashboard() {
     },
 
     racePredictions: racePredictionsDto(raceRows),
+    marathonHistory,
+    totals,
 
     race: raceInfo(today),
 
