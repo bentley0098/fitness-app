@@ -1,4 +1,4 @@
-import { mondayOf } from "./planMeta";
+import { mondayOf } from "../../shared/utils/calendar";
 
 // Pure planning for "drag this session onto that day". No I/O — the endpoint
 // executes whatever `steps` comes back with. A day can hold any number of

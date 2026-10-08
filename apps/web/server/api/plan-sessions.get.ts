@@ -14,7 +14,7 @@ import { toPlanSessionDto } from "../utils/serialize";
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
   const view = typeof query.view === "string" ? query.view : null;
-  const snapshot = await loadPlanSnapshot();
+  const snapshot = await loadPlanSnapshot(requestToday(event));
 
   if (view === "overview") return buildOverview(snapshot);
 

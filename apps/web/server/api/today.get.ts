@@ -1,15 +1,16 @@
 import { evaluate } from "@fitness/engine";
-import { addDaysIso, isoDate } from "../utils/dates";
+import { addDaysIso } from "../../shared/utils/calendar";
+import { requestToday } from "../utils/requestZone";
 import { loadTrainingWindow } from "../utils/trainingData";
 
 // Kept alive for the standalone scripts and any existing consumer even though
 // the Home screen now uses /api/dashboard.
-export default defineEventHandler(async () => {
+export default defineEventHandler(async (event) => {
   // One load, not two: this previously called evaluateToday() (which loads the
   // window internally) and then loadTrainingWindow() again, fetching every
   // activity and health metric twice per request.
   const window = await loadTrainingWindow();
-  const asOfDate = isoDate(new Date());
+  const asOfDate = requestToday(event);
   const evaluation = evaluate(window, asOfDate);
 
   const weekStart = addDaysIso(asOfDate, -6);
