@@ -32,7 +32,7 @@ _Avoid_: Type (reserved for run session types)
 The kind of strength session done at a gym, usually with weights.
 
 **Physio**:
-The kind of strength session done at home, usually bodyweight, bands or holds, in the style of rehab exercises.
+The kind of strength session done at home, usually bodyweight, bands or holds, in the style of rehab exercises. It is optional: started from the Strength tab whenever the runner wants it, and not scheduled in the plan by default.
 _Avoid_: Home session, rehab
 
 **Template**:

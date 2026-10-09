@@ -4,13 +4,14 @@
 // Only ever adds what is missing, matched by name ignoring case and spacing, so
 // running it again never overwrites a template or exercise you have edited.
 //
-// It also schedules the routines in the plan (Gym A and the ankle routine on
-// Mondays, the ankle routine on Wednesdays, Gym B on Fridays, hips and core on
-// Sundays), from today through the Sunday before race week. A re-run replaces
-// only the sessions it created and you have not touched: anything you moved,
-// edited or logged stays.
+// It also schedules the gym routines in the plan (Gym A on Mondays, Gym B on
+// Fridays), from today through the Sunday before race week. Physio routines are
+// optional and never scheduled; start them from the Strength tab. A re-run
+// replaces only the sessions it created and you have not touched: anything you
+// moved, edited or logged stays.
 //
 // Run with: npm run strength:seed
+// Preview what a run would add and remove, writing nothing: npm run strength:seed -- --dry-run
 import { db, withJwtRetry } from "../server/utils/db";
 import { isoDate } from "../server/utils/dates";
 import { RACE_DATE, mondayOf } from "../server/utils/planMeta";
@@ -19,7 +20,14 @@ import { exerciseKey } from "../server/utils/strength";
 import { planSeed } from "../server/utils/strengthSeed";
 import { SEED_MARKER, diffSchedule, planStrengthSchedule } from "../server/utils/strengthSchedule";
 
+const DRY_RUN = process.argv.includes("--dry-run");
+
 async function main() {
+  if (DRY_RUN) {
+    await schedule();
+    return;
+  }
+
   const [{ data: existingExercises, error: exErr }, { data: existingTemplates, error: tErr }] = await Promise.all([
     withJwtRetry(() => db.from("exercises").select("id, name")),
     withJwtRetry(() => db.from("strength_templates").select("id, name")),
@@ -125,6 +133,18 @@ async function schedule() {
 
   const desired = planStrengthSchedule({ today, raceDate: RACE_DATE, phaseForWeek: (week) => phaseByWeek.get(week) ?? null });
   const diff = diffSchedule(desired, seeded, templateIdOf, today);
+
+  if (DRY_RUN) {
+    const byId = new Map((sessions ?? []).map((r) => [r.id as string, r]));
+    console.log(`Dry run: nothing written. Would remove ${diff.deleteIds.length} and add ${diff.insert.length} strength session(s).`);
+    for (const id of diff.deleteIds) {
+      const r = byId.get(id)!;
+      const name = (r.prescription as Record<string, unknown> | null)?.templateName ?? r.type;
+      console.log(`  remove ${r.date}  ${name}`);
+    }
+    for (const d of diff.insert) console.log(`  add    ${d.date}  ${d.templateName}`);
+    return;
+  }
 
   if (diff.deleteIds.length > 0) {
     const { error } = await withJwtRetry(() => db.from("plan_sessions").delete().in("id", diff.deleteIds));
