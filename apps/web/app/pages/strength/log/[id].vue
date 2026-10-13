@@ -17,7 +17,7 @@
       </p>
     </header>
 
-    <AsyncState :pending="pending" :error="error" title="Couldn't load this session" :skeletons="4">
+    <AsyncState :pending="pending && !data" :error="error && !data" title="Couldn't load this session" :skeletons="4">
       <template v-if="data">
         <div
           v-for="(group, gi) in data.groups"
@@ -59,8 +59,8 @@
               <ExerciseActions
                 v-if="data.status === 'in_progress'"
                 :rows="exercise.rows.length"
-                @add-set="structure(exercise, 'add-set')"
-                @remove-set="structure(exercise, 'remove-set')"
+                @add-set="structure(group, exercise, 'add-set')"
+                @remove-set="structure(group, exercise, 'remove-set')"
                 @swap="swapping = swapping === exercise.logExerciseId ? null : exercise.logExerciseId"
                 @skip="skip(exercise)"
               />
@@ -83,8 +83,8 @@
               <ExerciseActions
                 v-if="data.status === 'in_progress'"
                 :rows="exercise.rows.length"
-                @add-set="structure(exercise, 'add-set')"
-                @remove-set="structure(exercise, 'remove-set')"
+                @add-set="structure(group, exercise, 'add-set')"
+                @remove-set="structure(group, exercise, 'remove-set')"
                 @swap="swapping = swapping === exercise.logExerciseId ? null : exercise.logExerciseId"
                 @skip="skip(exercise)"
               />
@@ -146,17 +146,73 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref, toRaw, watch } from "vue";
+import { addRow, applyDraft, finishSnapshot, parseDraft, removeRow, toDraft } from "~/composables/strengthDraft";
+import type { LogView } from "~~/server/utils/strengthLogs";
 
 const route = useRoute();
 const id = String(route.params.id);
 
-const { data, pending, error, refresh } = await useFetch(`/api/strength/logs/${id}`);
+const { data: fetched, pending, error, refresh } = await useFetch<LogView>(`/api/strength/logs/${id}`);
 const { data: libraryData, refresh: refreshLibrary } = await useFetch("/api/strength/exercises", { default: () => ({ exercises: [] }) });
 const library = computed(() => libraryData.value.exercises);
 
-type Exercise = NonNullable<typeof data.value>["groups"][number]["exercises"][number];
+type Session = LogView;
+type Group = Session["groups"][number];
+type Exercise = Group["exercises"][number];
 type Row = Exercise["rows"][number];
+
+// The page works on its own deep copy of the session, so a tick or an edit shows
+// the moment it happens. While the session is in progress nothing waits on the
+// network: every change is kept on this device and the whole session is sent
+// once, when it is finished.
+const draftKey = `strength-draft:${id}`;
+const draftReady = ref(false);
+const data = ref<Session | null>(null);
+
+function loadDraft() {
+  try {
+    return parseDraft(localStorage.getItem(draftKey));
+  } catch {
+    return null;
+  }
+}
+
+function saveDraft() {
+  if (!data.value || data.value.status !== "in_progress") return;
+  try {
+    localStorage.setItem(draftKey, JSON.stringify(toDraft(data.value)));
+  } catch {
+    // Storage full or blocked: the page still works, it just won't survive a reload.
+  }
+}
+
+function clearDraft() {
+  try {
+    localStorage.removeItem(draftKey);
+  } catch {}
+}
+
+function adopt(server: Session | null | undefined) {
+  if (!server) {
+    data.value = null;
+    return;
+  }
+  const copy = structuredClone(toRaw(server)) as Session;
+  if (copy.status === "finished") clearDraft();
+  data.value = draftReady.value && copy.status === "in_progress" ? applyDraft(copy, loadDraft()) : copy;
+}
+
+adopt(fetched.value);
+watch(fetched, adopt);
+// The draft lives in this browser only, so it is laid over the server's copy
+// once mounted rather than during server rendering.
+onMounted(() => {
+  draftReady.value = true;
+  adopt(fetched.value);
+});
+
+const inProgress = computed(() => data.value?.status === "in_progress");
 
 const saveError = ref<string | null>(null);
 const finishing = ref(false);
@@ -175,37 +231,33 @@ function payload(exercise: Exercise, row: Row) {
   };
 }
 
-// Logged straight away, one set at a time: leaving the app mid-workout loses nothing.
-async function onToggle(exercise: Exercise, row: Row, restSeconds: number | null = null) {
-  saveError.value = null;
-  const wasLogged = row.logged;
-  row.logged = !wasLogged;
+// A finished session can still be corrected. Those changes save in the
+// background, and are undone on the page if the save fails.
+async function saveFinished(exercise: Exercise, row: Row, wasLogged: boolean) {
   try {
-    if (wasLogged) {
-      await $fetch(`/api/strength/logs/${id}/sets`, {
-        method: "DELETE",
-        body: { logExerciseId: exercise.logExerciseId, setIndex: row.setIndex },
-      });
-    } else {
-      await $fetch(`/api/strength/logs/${id}/sets`, { method: "PUT", body: payload(exercise, row) });
-      if (restSeconds) rest.start(restSeconds);
-    }
+    if (row.logged) await $fetch(`/api/strength/logs/${id}/sets`, { method: "PUT", body: payload(exercise, row) });
+    else await $fetch<unknown>(`/api/strength/logs/${id}/sets`, { method: "DELETE", body: { logExerciseId: exercise.logExerciseId, setIndex: row.setIndex } });
   } catch (e) {
     row.logged = wasLogged;
     saveError.value = describe(e, "Couldn't save that set.");
   }
 }
 
-// Changing a set that is already logged saves the change; an unlogged one is
-// just a draft until it is logged.
-async function onEdit(exercise: Exercise, row: Row) {
-  if (!row.logged) return;
+function onToggle(exercise: Exercise, row: Row, restSeconds: number | null = null) {
   saveError.value = null;
-  try {
-    await $fetch(`/api/strength/logs/${id}/sets`, { method: "PUT", body: payload(exercise, row) });
-  } catch (e) {
-    saveError.value = describe(e, "Couldn't save that change.");
-  }
+  const wasLogged = row.logged;
+  row.logged = !wasLogged;
+  if (row.logged && restSeconds && inProgress.value) rest.start(restSeconds);
+  if (inProgress.value) saveDraft();
+  else void saveFinished(exercise, row, wasLogged);
+}
+
+// An edit to an unlogged row is a draft until it is logged; in a finished
+// session an edit to a logged row saves straight away.
+function onEdit(exercise: Exercise, row: Row) {
+  saveError.value = null;
+  if (inProgress.value) saveDraft();
+  else if (row.logged) void saveFinished(exercise, row, true);
 }
 
 const rest = useRestTimer();
@@ -219,10 +271,12 @@ const adding = ref(false);
 
 type Choice = { name: string; measure: "reps" | "hold"; perSide: boolean };
 
-// Structure changes (sets, swaps, extra exercises) reload the session: the
-// server owns what rows exist, and the rows it hands back are pre-filled.
+// Adding and removing sets is local, like logging them. Swapping, skipping and
+// adding exercises go to the server, which knows the exercise library; the page
+// then reloads the session and lays this device's draft back over it.
 async function change(request: () => Promise<unknown>, fallback: string) {
   saveError.value = null;
+  saveDraft();
   try {
     await request();
     await Promise.all([refresh(), refreshLibrary()]);
@@ -231,11 +285,11 @@ async function change(request: () => Promise<unknown>, fallback: string) {
   }
 }
 
-function structure(exercise: Exercise, action: "add-set" | "remove-set") {
-  return change(
-    () => $fetch(`/api/strength/logs/${id}/exercises/${exercise.logExerciseId}/${action}`, { method: "POST" }),
-    "Couldn't change the sets.",
-  );
+function structure(group: Group, exercise: Exercise, action: "add-set" | "remove-set") {
+  saveError.value = null;
+  if (action === "add-set") addRow(group, exercise);
+  else removeRow(group, exercise);
+  saveDraft();
 }
 
 // Drops the exercise from this session. Anything already logged on it goes too,
@@ -250,10 +304,21 @@ async function skip(exercise: Exercise) {
 }
 
 async function swap(exercise: Exercise, choice: Choice) {
-  await change(
-    () => $fetch(`/api/strength/logs/${id}/exercises/${exercise.logExerciseId}/swap`, { method: "POST", body: choice }),
-    "Couldn't swap that exercise.",
-  );
+  if (exercise.rows.some((r) => r.logged)) {
+    saveError.value = "Un-log this exercise's sets before swapping it.";
+    return;
+  }
+  await change(async () => {
+    await $fetch(`/api/strength/logs/${id}/exercises/${exercise.logExerciseId}/swap`, { method: "POST", body: choice });
+    // The rows drafted for the old exercise don't fit the new one.
+    const draft = loadDraft();
+    if (draft) {
+      delete draft.exercises[exercise.logExerciseId];
+      try {
+        localStorage.setItem(draftKey, JSON.stringify(draft));
+      } catch {}
+    }
+  }, "Couldn't swap that exercise.");
   if (!saveError.value) swapping.value = null;
 }
 
@@ -267,6 +332,7 @@ async function remove() {
   saveError.value = null;
   try {
     await $fetch(`/api/strength/logs/${id}`, { method: "DELETE" });
+    clearDraft();
     await navigateTo("/strength/history");
   } catch (e) {
     saveError.value = describe(e, "Couldn't delete the session.");
@@ -277,7 +343,9 @@ async function finish() {
   finishing.value = true;
   saveError.value = null;
   try {
-    await $fetch(`/api/strength/logs/${id}/finish`, { method: "POST" });
+    // Everything logged on this device goes up in this one request.
+    await $fetch(`/api/strength/logs/${id}/finish`, { method: "POST", body: data.value ? finishSnapshot(data.value) : undefined });
+    clearDraft();
     await navigateTo("/strength");
   } catch (e) {
     saveError.value = describe(e, "Couldn't finish the session.");
