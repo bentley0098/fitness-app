@@ -68,11 +68,13 @@ function daysOf<T extends { date: string; type: string | null }>(sessions: T[]) 
   return [...byDate].sort(([a], [b]) => a.localeCompare(b)).map(([date, list]) => ({ date, sessions: runsFirst(list) }));
 }
 
-// Strength sessions are named after their template ("Gym A", "Physio: ankle");
-// the overview only needs the kind.
-function labelFor(s: { type: string | null; label: string }) {
+// The overview is a glance: kind and distance only. Strength sessions are
+// named after their template ("Gym A", "Physio: ankle") and runs carry notes
+// ("with strides"); both belong on the week view, not here.
+function labelFor(s: { type: string | null; label: string; typeLabel: string; targetDistanceM: number | null }) {
   if (s.type === "strength_gym") return "Gym";
   if (s.type === "strength_physio") return "Physio";
+  if (s.targetDistanceM != null) return `${s.typeLabel} · ${formatDistance(s.targetDistanceM)} km`;
   return s.label;
 }
 

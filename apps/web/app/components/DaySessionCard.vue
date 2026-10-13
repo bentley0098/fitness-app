@@ -66,8 +66,6 @@
         </template>
         <span v-else class="text-sm font-medium text-muted">{{ session.label }}</span>
       </div>
-
-      <p v-if="session.changedBecause" class="mt-2 text-xs text-verdict-hold">{{ session.changedBecause }}</p>
     </div>
   </div>
 </template>
