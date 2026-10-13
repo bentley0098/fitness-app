@@ -164,6 +164,7 @@ export function buildOverview(snapshot: PlanSnapshot) {
           date: d.date,
           type: session.type,
           label: session.label,
+          typeLabel: typeLabel(session.type),
           targetDistanceM: session.targetDistanceM,
           state: session.completion.state,
           actualDistanceM: session.completion.actualDistanceM,
