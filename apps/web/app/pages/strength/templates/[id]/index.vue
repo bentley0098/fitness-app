@@ -62,7 +62,7 @@ const route = useRoute();
 const { data, pending, error } = await useFetch(() => `/api/strength/templates/${route.params.id}`);
 
 // Defaults to today; pick an earlier day to log a session you forgot at the time.
-const today = new Date().toLocaleDateString("en-CA");
+const today = useToday();
 const date = ref(today);
 const starting = ref(false);
 const startError = ref<string | null>(null);

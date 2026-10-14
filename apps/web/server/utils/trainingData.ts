@@ -1,8 +1,5 @@
 import { evaluate } from "@fitness/engine";
 import type { Activity, DailyHealthMetrics, EngineParams, EvaluationResult, TrainingWindow } from "@fitness/engine";
-// isoDate/addDaysIso live in ./dates — pure, so callers that only need date
-// arithmetic (planMeta and its tests) don't construct a Supabase client.
-import { isoDate } from "./dates";
 import { db, withJwtRetry } from "./db";
 import { selectTolerant } from "./optionalColumns";
 import {
@@ -87,8 +84,7 @@ export async function loadTrainingWindow(): Promise<TrainingWindow> {
   return { activities, healthMetrics, engineParams };
 }
 
-export async function evaluateToday(): Promise<EvaluationResult & { asOfDate: string }> {
+export async function evaluateToday(asOfDate: string): Promise<EvaluationResult & { asOfDate: string }> {
   const window = await loadTrainingWindow();
-  const asOfDate = isoDate(new Date());
   return { asOfDate, ...evaluate(window, asOfDate) };
 }

@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { isoDate } from "./dates";
+import { mondayOf, weekDates } from "../../shared/utils/calendar";
 import {
   FIRST_WEEK_START,
   LAST_WEEK_START,
@@ -7,8 +7,6 @@ import {
   RACE_NAME,
   TOTAL_WEEKS,
   daysUntilRace,
-  mondayOf,
-  weekDates,
   weekEndForStart,
   weekNumberFor,
   weekStartForNumber,
@@ -31,7 +29,7 @@ export interface PlanSnapshot {
   today: string;
 }
 
-export async function loadPlanSnapshot(): Promise<PlanSnapshot> {
+export async function loadPlanSnapshot(today: string): Promise<PlanSnapshot> {
   const [{ data: sessionRows, error: sessionErr }, { data: activityRows, error: activityErr }, strengthLogs] = await Promise.all([
     db.from("plan_sessions").select("*").order("date", { ascending: true }),
     selectTolerant("activities", ACTIVITY_COLUMNS, ACTIVITY_BASE_COLUMNS, (cols) =>
@@ -47,7 +45,7 @@ export async function loadPlanSnapshot(): Promise<PlanSnapshot> {
     sessions: (sessionRows ?? []) as SessionLike[],
     activities: (activityRows ?? []) as ActivityLike[],
     strengthLogs,
-    today: isoDate(new Date()),
+    today,
   };
 }
 

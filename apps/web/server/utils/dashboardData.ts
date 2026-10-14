@@ -1,10 +1,10 @@
 import { computeWorkloadRatio, evaluate } from "@fitness/engine";
-import { addDaysIso, isoDate } from "./dates";
+import { addDaysIso, daysBetween, mondayOf, weekDates } from "../../shared/utils/calendar";
 import { db } from "./db";
 import { loadTrainingWindow } from "./trainingData";
 import { RUN_TYPES, buildDay, sessionsByDate, totalsFor } from "./planCompletion";
 import { loadStrengthLogsLike } from "./strengthLogs";
-import { PLAN_START_MONDAY, mondayOf, weekDates, weekEndForStart, weekNumberFor } from "./planMeta";
+import { PLAN_START_MONDAY, weekEndForStart, weekNumberFor } from "./planMeta";
 import { raceInfo } from "./planView";
 import { selectTolerant } from "./optionalColumns";
 import {
@@ -110,8 +110,7 @@ function racePredictionsDto(rows: RacePredictionRow[]) {
   };
 }
 
-export async function buildDashboard() {
-  const today = isoDate(new Date());
+export async function buildDashboard(today: string) {
   const window = await loadTrainingWindow();
   const evaluation = evaluate(window, today);
   const load = computeWorkloadRatio(window.activities, today);
@@ -308,6 +307,5 @@ export async function buildDashboard() {
 function historyDays(activities: { date: string }[], today: string): number {
   if (!activities.length) return 0;
   const earliest = activities.reduce((min, a) => (a.date < min ? a.date : min), activities[0]!.date);
-  const ms = new Date(`${today}T00:00:00Z`).getTime() - new Date(`${earliest}T00:00:00Z`).getTime();
-  return Math.floor(ms / 86_400_000) + 1;
+  return daysBetween(earliest, today) + 1;
 }

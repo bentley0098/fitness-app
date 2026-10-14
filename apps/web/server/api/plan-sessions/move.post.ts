@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
   // straight into its existing state instead of refetching. Re-read rather
   // than patched in memory, so completion badges and weekly totals come back
   // properly derived.
-  const snapshot = await loadPlanSnapshot();
+  const snapshot = await loadPlanSnapshot(requestToday(event));
   return {
     race: raceInfo(snapshot.today),
     ...buildWeek(snapshot, body.toDate),

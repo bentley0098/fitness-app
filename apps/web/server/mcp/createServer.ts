@@ -3,8 +3,7 @@ import { evaluate } from "@fitness/engine";
 import { z } from "zod";
 import type { OperationRequest } from "../utils/planProposal";
 import { ProposalError, createProposal, loadPlanLibrary, loadPlannerSessions, pendingProposalIdsBySession } from "../utils/planProposals";
-import { addDaysIso, isoDate } from "../utils/dates";
-import { mondayOf } from "../utils/planMeta";
+import { DEFAULT_ZONE, addDaysIso, mondayOf, today } from "../../shared/utils/calendar";
 import { loadTrainingWindow } from "../utils/trainingData";
 import { listLogs, loadStrengthHistory, loadStrengthLogsLike } from "../utils/strengthLogs";
 import { listTemplates, loadExercises, viewTemplate } from "../utils/strengthStore";
@@ -38,10 +37,12 @@ function textResult(value: unknown) {
 // each call's data as fresh as the moment it was invoked.
 export function createMcpServer(appOrigin = ""): McpServer {
   const server = new McpServer({ name: "adaptive-training", version: "1.0.0" });
+  // No device behind an MCP call, so Today is Irish time.
+  const todayNow = () => today(new Date(), DEFAULT_ZONE);
 
   async function proposeAndReport(requests: OperationRequest[], rationale: string) {
     try {
-      const created = await createProposal(requests, rationale);
+      const created = await createProposal(requests, rationale, todayNow());
       return textResult({ ...created, link: `${appOrigin}/proposal/${created.proposalId}` });
     } catch (e) {
       if (e instanceof ProposalError) return { content: [{ type: "text" as const, text: e.message }], isError: true };
@@ -58,7 +59,7 @@ export function createMcpServer(appOrigin = ""): McpServer {
     },
     async ({ days }) => {
       const window = await loadTrainingWindow();
-      const asOfDate = isoDate(new Date());
+      const asOfDate = todayNow();
       const from = addDaysIso(asOfDate, -(days - 1));
 
       const evaluation = evaluate(window, asOfDate);
@@ -83,7 +84,7 @@ export function createMcpServer(appOrigin = ""): McpServer {
     async ({ from, to }) => {
       const [all, pending, logs, summaries] = await Promise.all([
         loadPlannerSessions(),
-        pendingProposalIdsBySession(),
+        pendingProposalIdsBySession(todayNow()),
         loadStrengthLogsLike(),
         listLogs(200),
       ]);

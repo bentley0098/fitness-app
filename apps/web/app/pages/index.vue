@@ -103,6 +103,7 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import type { StripWeek } from "~/components/WeekDayStrip.vue";
 import { runsFirst } from "~/composables/sessionKind";
+import { weekDates } from "#shared/utils/calendar";
 
 const DAY_FORMAT: Intl.DateTimeFormatOptions = { weekday: "long", day: "numeric", month: "short" };
 
@@ -147,7 +148,7 @@ function panel(start: string | null | undefined): StripWeek | null {
   const loaded = cache.get(start);
   return {
     start,
-    days: loaded ? loaded.days : weekDatesFrom(start).map((date) => ({ date, sessions: [] })),
+    days: loaded ? loaded.days : weekDates(start).map((date) => ({ date, sessions: [] })),
   };
 }
 
@@ -167,8 +168,8 @@ function changeWeek(direction: "next" | "prev") {
   const nav = cache.get(centerStart.value)?.nav;
   const target = direction === "next" ? nav?.nextWeekStart : nav?.prevWeekStart;
   if (!target) return;
-  const dates = weekDatesFrom(target);
-  const index = Math.max(0, weekDatesFrom(centerStart.value).indexOf(selected.value));
+  const dates = weekDates(target);
+  const index = Math.max(0, weekDates(centerStart.value).indexOf(selected.value));
   selected.value = dates.includes(todayDate) ? todayDate : dates[index]!;
   centerStart.value = target;
 }

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { today as todayIn } from "../../../shared/utils/calendar";
 import { buildDay, countsToward, matchDay, matchStrengthActivities, sessionForEachActivity, totalsFor, type SessionLike, type StrengthLogLike } from "../planCompletion";
 
 const TODAY = "2026-09-22";
@@ -320,5 +321,19 @@ describe("matchStrengthActivities", () => {
 
   it("gives nothing to a session when the watch wasn't worn", () => {
     expect(matchStrengthActivities([logOn("log1")], []).size).toBe(0);
+  });
+});
+
+describe("today and watch-local activity dates", () => {
+  // 23:30 UTC on 21 Sep is 00:30 on the 22nd in Dublin. The watch stamps a run
+  // done at that moment with the local date, 2026-09-22.
+  const now = new Date("2026-09-21T23:30:00Z");
+
+  it("marks the watch-dated day as today and counts the run, using the runner's zone", () => {
+    const today = todayIn(now, "Europe/Dublin");
+    const day = buildDay("2026-09-22", [session()], [run()], today);
+    expect(today).toBe("2026-09-22");
+    expect(day.isToday).toBe(true);
+    expect(day.sessions[0]!.completion.state).toBe("completed");
   });
 });
