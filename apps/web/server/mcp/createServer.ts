@@ -29,6 +29,11 @@ const exerciseOpFields = {
   restSeconds: z.number().int().min(0).nullish(),
 };
 
+// Run types the app labels and colours. easy_run and quality_run still work
+// but predate the effort guide; prefer the specific type.
+const RUN_TYPE_HINT =
+  "Runs: recovery_run, aerobic_run, tempo_run, threshold_run, mp_run (marathon pace), long_run, benchmark_run. Strength: strength_gym, strength_physio";
+
 function textResult(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
 }
@@ -149,7 +154,7 @@ export function createMcpServer(appOrigin = ""): McpServer {
       inputSchema: {
         sessionId: z.string(),
         patch: z.object({
-          type: z.string().optional(),
+          type: z.string().optional().describe(RUN_TYPE_HINT),
           phase: z.string().optional(),
           prescription: z.record(z.unknown()).optional(),
           cap: z.record(z.unknown()).optional(),
@@ -183,7 +188,7 @@ export function createMcpServer(appOrigin = ""): McpServer {
       inputSchema: {
         date: z.string().describe("ISO date for the new session"),
         phase: z.string(),
-        type: z.string().describe("e.g. easy_run, long_run, quality_run"),
+        type: z.string().describe(RUN_TYPE_HINT),
         prescription: z.record(z.unknown()).describe("e.g. {distanceKm: 5, pace: \"6:00\"}"),
         cap: z.record(z.unknown()).optional(),
         rationale: z.string().describe("Human-readable reason, shown on the proposal screen"),
@@ -285,7 +290,7 @@ export function createMcpServer(appOrigin = ""): McpServer {
                 kind: z.literal("update"),
                 sessionId: z.string(),
                 patch: z.object({
-                  type: z.string().optional(),
+                  type: z.string().optional().describe(RUN_TYPE_HINT),
                   phase: z.string().optional(),
                   prescription: z.record(z.unknown()).optional(),
                   cap: z.record(z.unknown()).optional(),
@@ -297,7 +302,7 @@ export function createMcpServer(appOrigin = ""): McpServer {
                 kind: z.literal("add"),
                 date: z.string(),
                 phase: z.string(),
-                type: z.string(),
+                type: z.string().describe(RUN_TYPE_HINT),
                 prescription: z.record(z.unknown()),
                 cap: z.record(z.unknown()).optional(),
               }),
