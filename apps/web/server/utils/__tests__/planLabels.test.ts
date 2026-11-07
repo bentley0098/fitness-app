@@ -17,6 +17,15 @@ describe("sessionLabel", () => {
     expect(sessionLabel("marathon", RACE)).toBe("Marathon · sub-3:30 (4:58/km)");
   });
 
+  it("names every run type in the effort guide", () => {
+    expect(typeLabel("recovery_run")).toBe("Recovery run");
+    expect(typeLabel("aerobic_run")).toBe("Aerobic run");
+    expect(typeLabel("tempo_run")).toBe("Tempo run");
+    expect(typeLabel("threshold_run")).toBe("Threshold run");
+    expect(typeLabel("mp_run")).toBe("MP run");
+    expect(typeLabel("benchmark_run")).toBe("Benchmark");
+  });
+
   it("describes an engine-drafted weekly volume row as a week total", () => {
     expect(sessionLabel("weekly-target", { targetWeeklyVolumeM: 22000 })).toBe("Weekly target · 22.0 km for the week");
   });

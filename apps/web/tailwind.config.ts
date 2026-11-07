@@ -38,10 +38,16 @@ export default {
         },
         kind: {
           easy: v("--c-kind-easy"),
+          recovery: v("--c-kind-recovery"),
+          aerobic: v("--c-kind-aerobic"),
+          tempo: v("--c-kind-tempo"),
+          threshold: v("--c-kind-threshold"),
+          mp: v("--c-kind-mp"),
+          long: v("--c-kind-long"),
+          benchmark: v("--c-kind-benchmark"),
+          workout: v("--c-kind-workout"),
           gym: v("--c-kind-gym"),
           physio: v("--c-kind-physio"),
-          long: v("--c-kind-long"),
-          workout: v("--c-kind-workout"),
         },
         verdict: {
           progress: v("--c-progress"),

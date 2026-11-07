@@ -7,6 +7,7 @@ import {
   findExercise,
   groupSlots,
   latestPerExercise,
+  planFinishWrites,
   planGroupSets,
   restForRound,
   retarget,
@@ -341,17 +342,64 @@ export async function clearSet(logId: string, logExerciseId: string, setIndex: n
   if (error) throw new Error(`Clear set failed: ${error.message}`);
 }
 
-export async function finishLog(id: string): Promise<void> {
+/**
+ * Finishes a session. An in-progress session is logged on the device and sent
+ * whole here: each exercise's set count and every logged set, which replace
+ * whatever is stored for those exercises. Finishing twice is harmless.
+ */
+export async function finishLog(id: string, snapshot?: unknown): Promise<void> {
   const { data: log, error } = await db.from("strength_logs").select("id, status").eq("id", id).maybeSingle();
   if (error) throw new Error(`Lookup failed: ${error.message}`);
   if (!log) throw new LogError("No such session.", 404);
   if (log.status === "finished") return;
+
+  if (snapshot != null) await writeSnapshot(id, snapshot);
 
   const { error: upErr } = await db
     .from("strength_logs")
     .update({ status: "finished", finished_at: new Date().toISOString() })
     .eq("id", id);
   if (upErr) throw new Error(`Finish failed: ${upErr.message}`);
+}
+
+// No transactions on this client, so the session is only marked finished once
+// every write here has gone through; a failed finish leaves it in progress, and
+// sending the same snapshot again puts it right.
+async function writeSnapshot(logId: string, snapshot: unknown): Promise<void> {
+  const { data: entries, error } = await db.from("strength_log_exercises").select("id, sets").eq("log_id", logId);
+  if (error) throw new Error(`Lookup failed: ${error.message}`);
+
+  const writes = planFinishWrites((entries ?? []).map((e) => e.id), snapshot);
+  if ("error" in writes) throw new LogError(writes.error, 400);
+
+  const current = new Map((entries ?? []).map((e) => [e.id, e.sets as number]));
+  await Promise.all(
+    writes.counts
+      .filter((c) => current.get(c.logExerciseId) !== c.sets)
+      .map(async (c) => {
+        const { error: upErr } = await db.from("strength_log_exercises").update({ sets: c.sets }).eq("id", c.logExerciseId);
+        if (upErr) throw new Error(`Save sets failed: ${upErr.message}`);
+      }),
+  );
+
+  const ids = writes.counts.map((c) => c.logExerciseId);
+  if (ids.length === 0) return;
+  const { error: delErr } = await db.from("strength_log_sets").delete().in("log_exercise_id", ids);
+  if (delErr) throw new Error(`Save sets failed: ${delErr.message}`);
+  if (writes.sets.length === 0) return;
+
+  const loggedAt = new Date().toISOString();
+  const { error: insErr } = await db.from("strength_log_sets").insert(
+    writes.sets.map((s) => ({
+      log_exercise_id: s.logExerciseId,
+      set_index: s.setIndex,
+      reps: s.reps,
+      hold_seconds: s.holdSeconds,
+      weight_kg: s.weightKg,
+      logged_at: loggedAt,
+    })),
+  );
+  if (insErr) throw new Error(`Save sets failed: ${insErr.message}`);
 }
 
 async function requireInProgress(logId: string): Promise<void> {
