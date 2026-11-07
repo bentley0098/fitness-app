@@ -411,11 +411,23 @@ export interface ProposalView {
  * an applied or rejected proposal still reads as it was proposed.
  */
 export async function viewProposal(id: string, today: string): Promise<ProposalView> {
-  const proposal = await loadProposal(id);
+  return toView(await loadProposal(id), today);
+}
 
+/** Every proposal still waiting, in full, so they can be reviewed and decided together. */
+export async function listPendingViews(today: string): Promise<ProposalView[]> {
+  const { data, error } = await db.from("plan_proposals").select("*").eq("status", "pending").order("created_at", { ascending: false });
+  if (error) throw new Error(`Load proposals failed: ${error.message}`);
+  const pending = ((data ?? []) as ProposalRow[]).filter((p) => effectiveStatus(p, today) === "pending");
+  if (pending.length === 0) return [];
+  const context = { sessions: await loadPlannerSessions(), library: await loadPlanLibrary() };
+  return Promise.all(pending.map((p) => toView(p, today, context)));
+}
+
+async function toView(proposal: ProposalRow, today: string, context?: { sessions: PlannerSession[]; library: PlanLibrary }): Promise<ProposalView> {
   let preview: ProposalPreview = proposal.preview ?? { rows: [], volume: [] };
   if (proposal.status === "pending") {
-    const [sessions, library] = await Promise.all([loadPlannerSessions(), loadPlanLibrary()]);
+    const { sessions, library } = context ?? { sessions: await loadPlannerSessions(), library: await loadPlanLibrary() };
     const plan = planApply(sessions, proposal.operations, library);
     if (plan.ok) preview = buildPreview(proposal.operations, sessions, plan, library);
   }
