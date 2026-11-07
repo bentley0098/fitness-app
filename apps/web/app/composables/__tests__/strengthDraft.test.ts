@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addRow, applyDraft, finishSnapshot, parseDraft, removeRow, toDraft, type DraftSession } from "../strengthDraft";
+import { addRow, applyDraft, finishSnapshot, parseDraft, propagateEdit, removeRow, toDraft, type DraftSession } from "../strengthDraft";
 
 function row(setIndex: number, over: Partial<{ logged: boolean; reps: number | null; weightKg: number | null }> = {}) {
   return { setIndex, logged: false, reps: 8, holdSeconds: null, weightKg: 40, previous: { reps: 8, holdSeconds: null, weightKg: 40 }, ...over };
@@ -82,5 +82,21 @@ describe("strength draft", () => {
         { logExerciseId: "c", sets: 1, logged: [{ setIndex: 0, reps: null, holdSeconds: 30, weightKg: null }] },
       ],
     });
+  });
+
+  it("carries an edit to the later sets that are not yet logged", () => {
+    const local = session();
+    const exercise = local.groups[0]!.exercises[0]!;
+    addRow(local.groups[0]!, exercise);
+    exercise.rows[1]!.logged = true;
+    exercise.rows[1]!.weightKg = 50;
+
+    exercise.rows[0]!.weightKg = 45;
+    propagateEdit(exercise, 0, "weightKg");
+    expect(exercise.rows.map((r) => r.weightKg)).toEqual([45, 50, 45]);
+
+    exercise.rows[1]!.reps = 6;
+    propagateEdit(exercise, 1, "reps");
+    expect(exercise.rows.map((r) => r.reps)).toEqual([8, 6, 6]);
   });
 });

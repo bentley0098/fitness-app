@@ -102,6 +102,16 @@ export function addRow(group: DraftGroup, exercise: DraftExercise): void {
   resequence(group);
 }
 
+/**
+ * Carries an edit forward: the sets after the edited one that are not yet
+ * logged take its new value, on the assumption the same is attempted for them.
+ */
+export function propagateEdit(exercise: DraftExercise, setIndex: number, field: "reps" | "weightKg" | "holdSeconds"): void {
+  const value = exercise.rows[setIndex]?.[field];
+  if (value === undefined) return;
+  for (const row of exercise.rows.slice(setIndex + 1)) if (!row.logged) row[field] = value;
+}
+
 /** Drops the last set row, logged or not. An exercise keeps at least one. */
 export function removeRow(group: DraftGroup, exercise: DraftExercise): void {
   if (exercise.rows.length <= 1) return;

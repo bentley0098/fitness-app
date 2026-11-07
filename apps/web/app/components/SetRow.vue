@@ -14,7 +14,8 @@
               min="0"
               class="tnum w-16 rounded-lg border border-line bg-canvas px-2 py-1.5 text-center text-sm text-ink"
               :aria-label="`${exercise.name} set ${row.setIndex + 1} reps`"
-              @change="$emit('edit')"
+              @focus="selectAll"
+              @change="$emit('edit', 'reps')"
             />
             <span class="text-xs text-subtle">reps</span>
           </label>
@@ -28,7 +29,8 @@
               placeholder="BW"
               class="tnum w-20 rounded-lg border border-line bg-canvas px-2 py-1.5 text-center text-sm text-ink"
               :aria-label="`${exercise.name} set ${row.setIndex + 1} weight in kilograms`"
-              @change="$emit('edit')"
+              @focus="selectAll"
+              @change="$emit('edit', 'weightKg')"
             />
             <span class="text-xs text-subtle">kg</span>
           </label>
@@ -41,12 +43,13 @@
             min="0"
             class="tnum w-20 rounded-lg border border-line bg-canvas px-2 py-1.5 text-center text-sm text-ink"
             :aria-label="`${exercise.name} set ${row.setIndex + 1} hold in seconds`"
-            @change="$emit('edit')"
+            @focus="selectAll"
+              @change="$emit('edit', 'holdSeconds')"
           />
           <span class="text-xs text-subtle">s</span>
         </label>
         <span v-if="exercise.perSide" class="text-[11px] text-subtle">each side</span>
-        <span v-if="previousLabel" class="tnum truncate text-[11px] text-subtle">last {{ previousLabel }}</span>
+        <span v-if="previousLabel" class="tnum truncate text-[11px] text-subtle">{{ previousLabel }}</span>
       </div>
     </div>
 
@@ -83,7 +86,16 @@ const props = defineProps<{
   label?: string;
 }>();
 
-defineEmits<{ toggle: []; edit: [] }>();
+defineEmits<{ toggle: []; edit: [field: "reps" | "weightKg" | "holdSeconds"] }>();
+
+// Tapping into a field selects what is in it, so typing replaces it. iOS
+// ignores a select() made during the focus event itself, so it is repeated
+// on the next frame.
+function selectAll(event: FocusEvent) {
+  const input = event.target as HTMLInputElement;
+  input.select();
+  requestAnimationFrame(() => input.select());
+}
 
 const previousLabel = computed(() => {
   const p = props.row.previous;
