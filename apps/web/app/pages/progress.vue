@@ -114,7 +114,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-const { data, pending, error } = await useFetch("/api/dashboard");
+const { data, pending, error } = useApiFetch("/api/dashboard", { swr: true });
 
 const metrics = computed(() => data.value?.today.metrics ?? null);
 

@@ -57,8 +57,9 @@ import { KIND_BAR, runsFirst, sessionKind } from "~/composables/sessionKind";
 const DONE = "text-verdict-progress line-through";
 const SHORT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" };
 
-const { data, pending, error } = await useFetch("/api/plan-sessions", {
+const { data, pending, error } = useApiFetch("/api/plan-sessions", {
   query: { view: "overview" },
+  swr: true,
 });
 
 // One entry per day, in date order, with that day's runs ahead of its strength work.

@@ -153,8 +153,8 @@ import type { LogView } from "~~/server/utils/strengthLogs";
 const route = useRoute();
 const id = String(route.params.id);
 
-const { data: fetched, pending, error, refresh } = await useFetch<LogView>(`/api/strength/logs/${id}`);
-const { data: libraryData, refresh: refreshLibrary } = await useFetch("/api/strength/exercises", { default: () => ({ exercises: [] }) });
+const { data: fetched, pending, error, refresh } = useApiFetch<LogView>(`/api/strength/logs/${id}`);
+const { data: libraryData, refresh: refreshLibrary } = useApiFetch("/api/strength/exercises", { default: () => ({ exercises: [] }) });
 const library = computed(() => libraryData.value.exercises);
 
 type Session = LogView;

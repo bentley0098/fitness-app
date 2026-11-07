@@ -17,7 +17,7 @@ import { computed } from "vue";
 
 // Claude proposes plan changes through the MCP; they only take effect once
 // approved on the proposal screen this links to.
-const { data } = await useFetch("/api/plan-proposals", { server: false, default: () => ({ pending: [] }) });
+const { data } = useApiFetch("/api/plan-proposals", { server: false, default: () => ({ pending: [] }) });
 
 const count = computed(() => data.value?.pending.length ?? 0);
 const first = computed(() => data.value?.pending[0] ?? null);

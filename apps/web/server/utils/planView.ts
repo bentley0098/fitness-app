@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { memoAsync } from "./memo";
 import { isoDate } from "./dates";
 import {
   FIRST_WEEK_START,
@@ -31,7 +32,11 @@ export interface PlanSnapshot {
   today: string;
 }
 
-export async function loadPlanSnapshot(): Promise<PlanSnapshot> {
+export function loadPlanSnapshot(): Promise<PlanSnapshot> {
+  return memoAsync("plan-snapshot", readPlanSnapshot);
+}
+
+async function readPlanSnapshot(): Promise<PlanSnapshot> {
   const [{ data: sessionRows, error: sessionErr }, { data: activityRows, error: activityErr }, strengthLogs] = await Promise.all([
     db.from("plan_sessions").select("*").order("date", { ascending: true }),
     selectTolerant("activities", ACTIVITY_COLUMNS, ACTIVITY_BASE_COLUMNS, (cols) =>

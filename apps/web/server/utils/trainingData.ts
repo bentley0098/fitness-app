@@ -4,6 +4,7 @@ import type { Activity, DailyHealthMetrics, EngineParams, EvaluationResult, Trai
 // arithmetic (planMeta and its tests) don't construct a Supabase client.
 import { isoDate } from "./dates";
 import { db, withJwtRetry } from "./db";
+import { memoAsync } from "./memo";
 import { selectTolerant } from "./optionalColumns";
 import {
   ACTIVITY_BASE_COLUMNS,
@@ -18,7 +19,11 @@ const METRIC_TABLE = "daily_health_metrics";
 // Single source of truth for turning Supabase rows into the engine's types.
 // Used by API routes (server/api/**) and the standalone scripts alike —
 // don't duplicate this mapping.
-export async function loadTrainingWindow(): Promise<TrainingWindow> {
+export function loadTrainingWindow(): Promise<TrainingWindow> {
+  return memoAsync("training-window", readTrainingWindow);
+}
+
+async function readTrainingWindow(): Promise<TrainingWindow> {
   const [
     { data: activityRows, error: activityErr },
     { data: metricRows, error: metricErr },

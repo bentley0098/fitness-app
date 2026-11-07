@@ -166,14 +166,14 @@ const route = useRoute();
 const planned = computed(() => route.query.planned === "1");
 
 // Only the fetch that applies runs; the other stays idle.
-const { data, pending: activityPending, error: activityError } = await useFetch(`/api/activities/${route.params.id}`, {
+const { data, pending: activityPending, error: activityError } = useApiFetch(`/api/activities/${route.params.id}`, {
   immediate: !planned.value,
 });
 const {
   data: plannedData,
   pending: plannedPending,
   error: plannedError,
-} = await useFetch(`/api/plan-sessions/${route.params.id}`, { immediate: planned.value });
+} = useApiFetch(`/api/plan-sessions/${route.params.id}`, { immediate: planned.value });
 
 const pending = computed(() => (planned.value ? plannedPending.value : activityPending.value));
 const error = computed(() => (planned.value ? plannedError.value : activityError.value));

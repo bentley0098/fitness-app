@@ -14,5 +14,5 @@
 
 <script setup lang="ts">
 const route = useRoute();
-const { data, pending, error } = await useFetch(() => `/api/strength/templates/${route.params.id}/editable`);
+const { data, pending, error } = useApiFetch(() => `/api/strength/templates/${route.params.id}/editable`);
 </script>

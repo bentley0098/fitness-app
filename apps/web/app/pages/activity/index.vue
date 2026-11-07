@@ -59,7 +59,7 @@ interface ActivityItem {
   planSessionId: string | null;
 }
 
-const { data, pending, error } = await useFetch<{ activities: ActivityItem[]; total: number }>("/api/activities", {
+const { data, pending, error } = useApiFetch<{ activities: ActivityItem[]; total: number }>("/api/activities", {
   query: { limit: PAGE_SIZE, offset: 0 },
 });
 
