@@ -99,7 +99,7 @@ const router = useRouter();
 // state the app has.
 const weekParam = computed(() => (typeof route.query.week === "string" ? route.query.week : undefined));
 
-const { data, pending, error, refresh } = await useFetch("/api/plan-sessions", {
+const { data, pending, error, refresh } = useApiFetch("/api/plan-sessions", {
   query: computed(() => ({ week: weekParam.value })),
 });
 

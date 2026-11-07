@@ -72,5 +72,5 @@ const THEMES: { value: ThemeChoice; label: string }[] = [
 ];
 const { choice: theme, set: setTheme } = useTheme();
 
-const { data: health, pending, error } = await useFetch<Record<string, number | string>>("/api/health");
+const { data: health, pending, error } = useApiFetch<Record<string, number | string>>("/api/health");
 </script>

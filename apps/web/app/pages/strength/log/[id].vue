@@ -151,8 +151,8 @@ import { computed, ref } from "vue";
 const route = useRoute();
 const id = String(route.params.id);
 
-const { data, pending, error, refresh } = await useFetch(`/api/strength/logs/${id}`);
-const { data: libraryData, refresh: refreshLibrary } = await useFetch("/api/strength/exercises", { default: () => ({ exercises: [] }) });
+const { data, pending, error, refresh } = useApiFetch(`/api/strength/logs/${id}`);
+const { data: libraryData, refresh: refreshLibrary } = useApiFetch("/api/strength/exercises", { default: () => ({ exercises: [] }) });
 const library = computed(() => libraryData.value.exercises);
 
 type Exercise = NonNullable<typeof data.value>["groups"][number]["exercises"][number];

@@ -44,7 +44,7 @@
     <div class="space-y-4 p-4">
       <ProposalBanner />
 
-      <AsyncState :pending="pending && !initial" :error="error" title="Couldn't load your week" :skeletons="3">
+      <AsyncState :pending="pending" :error="error" title="Couldn't load your week" :skeletons="3">
         <template v-if="initial">
           <section class="space-y-2">
             <div class="flex items-center justify-between">
@@ -95,31 +95,48 @@
       </AsyncState>
 
       <HomeProgressCards v-if="progress" :data="progress" />
+      <div v-else class="space-y-2" aria-hidden="true">
+        <div class="h-4 w-28 animate-pulse rounded bg-raised" />
+        <div class="h-40 w-[85%] animate-pulse rounded-card bg-raised" />
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, reactive, ref, watch } from "vue";
 import type { StripWeek } from "~/components/WeekDayStrip.vue";
 import { runsFirst } from "~/composables/sessionKind";
 
 const DAY_FORMAT: Intl.DateTimeFormatOptions = { weekday: "long", day: "numeric", month: "short" };
 
-const { data: initial, pending, error, refresh } = await useFetch("/api/plan-sessions");
-// Below the fold, so it loads after the week and never blocks it.
-const { data: progress } = useFetch("/api/dashboard", { lazy: true, server: false });
+// Neither fetch is awaited, so the tab press navigates at once and the page
+// paints its skeletons while these load. `swr` shows the last copy instantly
+// on a return visit. Both start together rather than the dashboard waiting
+// for the week.
+const { data: initial, pending, error, refresh } = useApiFetch("/api/plan-sessions", { swr: true });
+const { data: progress, refresh: refreshProgress } = useApiFetch("/api/dashboard", { swr: true });
 type WeekData = NonNullable<typeof initial.value>;
 
 // Weeks already loaded, by Monday. The strip shows the previous, current and
 // next week at once, so a swipe has its destination ready.
 const cache = reactive(new Map<string, WeekData>());
-const centerStart = ref(initial.value?.week.startDate ?? "");
-if (initial.value) cache.set(initial.value.week.startDate, initial.value);
+const centerStart = ref("");
+const todayDate = ref("");
+const currentWeekStart = ref("");
+const selected = ref("");
 
-const todayDate = initial.value?.days.find((d) => d.isToday)?.date ?? "";
-const currentWeekStart = initial.value?.nav.currentWeekStart ?? centerStart.value;
-const selected = ref(todayDate || (initial.value?.days[0]?.date ?? ""));
+// Runs once per arrival of the first week (and again after a sync refresh).
+function adopt(week: WeekData) {
+  cache.set(week.week.startDate, week);
+  if (!centerStart.value) {
+    centerStart.value = week.week.startDate;
+    todayDate.value = week.days.find((d) => d.isToday)?.date ?? "";
+    currentWeekStart.value = week.nav.currentWeekStart;
+    selected.value = todayDate.value || (week.days[0]?.date ?? "");
+  }
+}
+watch(initial, (week) => week && adopt(week), { immediate: true });
 
 const inflight = new Set<string>();
 async function loadWeek(start: string) {
@@ -139,8 +156,8 @@ async function loadAround() {
   const nav = cache.get(centerStart.value)?.nav;
   await Promise.all([nav?.prevWeekStart, nav?.nextWeekStart].map((w) => (w ? loadWeek(w) : undefined)));
 }
-onMounted(loadAround);
-watch(centerStart, loadAround);
+// Neighbours are prefetched as soon as the centre week is known.
+watch(centerStart, (start) => start && loadAround(), { immediate: true });
 
 function panel(start: string | null | undefined): StripWeek | null {
   if (!start) return null;
@@ -169,13 +186,13 @@ function changeWeek(direction: "next" | "prev") {
   if (!target) return;
   const dates = weekDatesFrom(target);
   const index = Math.max(0, weekDatesFrom(centerStart.value).indexOf(selected.value));
-  selected.value = dates.includes(todayDate) ? todayDate : dates[index]!;
+  selected.value = dates.includes(todayDate.value) ? todayDate.value : dates[index]!;
   centerStart.value = target;
 }
 
 function goToday() {
-  centerStart.value = currentWeekStart;
-  selected.value = todayDate;
+  centerStart.value = currentWeekStart.value;
+  selected.value = todayDate.value;
 }
 
 // The next planned day after the one on screen, else the first session of a
@@ -201,8 +218,8 @@ async function syncNow() {
   syncMessage.value = "";
   try {
     const res = await $fetch<{ newActivities: number; errors: string[] }>("/api/sync", { method: "POST" });
-    await refresh();
     cache.clear();
+    await Promise.all([refresh(), refreshProgress()]);
     if (initial.value) cache.set(initial.value.week.startDate, initial.value);
     await loadAround();
     const found = res.newActivities
