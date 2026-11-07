@@ -51,9 +51,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-const { data, pending, error } = await useFetch("/api/strength/templates");
+const { data, pending, error } = useApiFetch("/api/strength/templates", { swr: true });
 // A failed lookup here just hides the banner; the templates are the page.
-const { data: active } = await useFetch("/api/strength/logs/active", { default: () => ({ log: null }) });
+const { data: active } = useApiFetch("/api/strength/logs/active", { default: () => ({ log: null }) });
 
 const sections = computed(() =>
   [

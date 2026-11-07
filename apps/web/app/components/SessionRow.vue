@@ -60,8 +60,6 @@
         <div class="h-full rounded-pill transition-all" :class="barClass" :style="{ width: `${barPct}%` }" />
       </div>
     </div>
-
-    <p v-if="session.changedBecause" class="mt-2 text-xs text-verdict-hold">{{ session.changedBecause }}</p>
   </div>
 </template>
 

@@ -56,10 +56,10 @@ interface TrendPoint {
   verdict: string;
 }
 
-const { data, pending, error } = await useFetch<{
+const { data, pending, error } = useApiFetch<{
   series: TrendPoint[];
   engineParams: { workloadRatioSweetSpotMin: number; workloadRatioSweetSpotMax: number };
-}>("/api/trends", { query: { days } });
+}>("/api/trends", { query: { days }, swr: true });
 
 const volumePoints = computed(() => data.value?.series.map((p) => p.weeklyVolumeM / 1000) ?? []);
 const ratioPoints = computed(() => data.value?.series.map((p) => p.workloadRatio) ?? []);

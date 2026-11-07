@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_REST_SECONDS, buildRows, linksToSupersetGroups, supersetGroupsToLinks, exerciseSeries, summariseSession, exerciseKey, latestPerExercise, planGroupSets, restForRound, retarget, findExercise, groupSlots, orphanedSupersetIds, previousSession, targetLabel, validateSlots, type Exercise, type TemplateSlot } from "../strength";
+import { DEFAULT_REST_SECONDS, buildRows, planFinishWrites, linksToSupersetGroups, supersetGroupsToLinks, exerciseSeries, summariseSession, exerciseKey, latestPerExercise, planGroupSets, restForRound, retarget, findExercise, groupSlots, orphanedSupersetIds, previousSession, targetLabel, validateSlots, type Exercise, type TemplateSlot } from "../strength";
 import { SEED_EXERCISES, SEED_TEMPLATES, planSeed } from "../strengthSeed";
 
 function exercise(over: Partial<Exercise> & { id: string; name: string }): Exercise {
@@ -401,5 +401,32 @@ describe("orphanedSupersetIds", () => {
 
   it("leaves intact supersets and plain exercises alone", () => {
     expect(orphanedSupersetIds([{ id: "a", supersetGroup: 1 }, { id: "b", supersetGroup: 1 }, { id: "c", supersetGroup: null }])).toEqual([]);
+  });
+});
+
+describe("planFinishWrites", () => {
+  const snapshot = (over: Record<string, unknown> = {}) => ({
+    exercises: [{ logExerciseId: "e1", sets: 3, logged: [{ setIndex: 0, reps: 8, holdSeconds: null, weightKg: 42.5 }], ...over }],
+  });
+
+  it("turns a snapshot into counts and set rows", () => {
+    expect(planFinishWrites(["e1", "e2"], snapshot())).toEqual({
+      counts: [{ logExerciseId: "e1", sets: 3 }],
+      sets: [{ logExerciseId: "e1", setIndex: 0, reps: 8, holdSeconds: null, weightKg: 42.5 }],
+    });
+  });
+
+  it("refuses exercises from another session, and repeats", () => {
+    expect(planFinishWrites(["e2"], snapshot())).toEqual({ error: "That exercise isn't part of this session." });
+    const twice = { exercises: [...snapshot().exercises, ...snapshot().exercises] };
+    expect(planFinishWrites(["e1"], twice)).toEqual({ error: "An exercise was sent twice." });
+  });
+
+  it("refuses sets that don't fit the exercise", () => {
+    expect(planFinishWrites(["e1"], snapshot({ sets: 0 }))).toHaveProperty("error");
+    expect(planFinishWrites(["e1"], snapshot({ logged: [{ setIndex: 3, reps: 8 }] }))).toHaveProperty("error");
+    expect(planFinishWrites(["e1"], snapshot({ logged: [{ setIndex: 0 }, { setIndex: 0 }] }))).toHaveProperty("error");
+    expect(planFinishWrites(["e1"], snapshot({ logged: [{ setIndex: 0, reps: 2.5 }] }))).toEqual({ error: "Reps must be a non-negative whole number." });
+    expect(planFinishWrites(["e1"], { nope: true })).toEqual({ error: "exercises must be a list." });
   });
 });

@@ -1,6 +1,7 @@
 import { computeWorkloadRatio, evaluate } from "@fitness/engine";
 import { addDaysIso, daysBetween, mondayOf, weekDates } from "../../shared/utils/calendar";
 import { db } from "./db";
+import { memoAsync } from "./memo";
 import { loadTrainingWindow } from "./trainingData";
 import { RUN_TYPES, buildDay, sessionsByDate, totalsFor } from "./planCompletion";
 import { loadStrengthLogsLike } from "./strengthLogs";
@@ -110,7 +111,11 @@ function racePredictionsDto(rows: RacePredictionRow[]) {
   };
 }
 
-export async function buildDashboard(today: string) {
+export function buildDashboard(today: string) {
+  return memoAsync(`dashboard:${today}`, () => readDashboard(today));
+}
+
+async function readDashboard(today: string) {
   const window = await loadTrainingWindow();
   const evaluation = evaluate(window, today);
   const load = computeWorkloadRatio(window.activities, today);

@@ -316,3 +316,66 @@ export function linksToSupersetGroups(linkNext: boolean[]): (number | null)[] {
 export function supersetGroupsToLinks(groups: (number | null)[]): boolean[] {
   return groups.map((group, i) => group != null && groups[i + 1] === group);
 }
+
+export interface FinishWrites {
+  /** Set counts for the session's exercises, as they ended up. */
+  counts: { logExerciseId: string; sets: number }[];
+  /** Every set logged in those exercises, replacing whatever was stored. */
+  sets: (LoggedSet & { logExerciseId: string; setIndex: number })[];
+}
+
+const MAX_SETS = 50;
+
+function nonNegative(value: unknown, label: string, integer: boolean): number | null {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0 || (integer && !Number.isInteger(n))) {
+    throw new Error(`${label} must be a non-negative ${integer ? "whole " : ""}number.`);
+  }
+  return n;
+}
+
+/**
+ * Checks the session a finish sends — each exercise's set count and logged sets
+ * — against the exercises the session has, and turns it into rows to write.
+ * Returns a message instead when something in it doesn't fit.
+ */
+export function planFinishWrites(entryIds: string[], snapshot: unknown): FinishWrites | { error: string } {
+  const exercises = (snapshot as { exercises?: unknown })?.exercises;
+  if (!Array.isArray(exercises)) return { error: "exercises must be a list." };
+
+  const known = new Set(entryIds);
+  const seen = new Set<string>();
+  const writes: FinishWrites = { counts: [], sets: [] };
+  try {
+    for (const e of exercises as Record<string, any>[]) {
+      const id = e?.logExerciseId;
+      if (typeof id !== "string" || !known.has(id)) return { error: "That exercise isn't part of this session." };
+      if (seen.has(id)) return { error: "An exercise was sent twice." };
+      seen.add(id);
+
+      const sets = e.sets;
+      if (!Number.isInteger(sets) || sets < 1 || sets > MAX_SETS) return { error: `An exercise needs between 1 and ${MAX_SETS} sets.` };
+      writes.counts.push({ logExerciseId: id, sets });
+
+      const indexes = new Set<number>();
+      for (const s of Array.isArray(e.logged) ? e.logged : []) {
+        const setIndex = s?.setIndex;
+        if (!Number.isInteger(setIndex) || setIndex < 0 || setIndex >= sets || indexes.has(setIndex)) {
+          return { error: "A logged set doesn't match the exercise's sets." };
+        }
+        indexes.add(setIndex);
+        writes.sets.push({
+          logExerciseId: id,
+          setIndex,
+          reps: nonNegative(s.reps, "Reps", true),
+          holdSeconds: nonNegative(s.holdSeconds, "Hold time", true),
+          weightKg: nonNegative(s.weightKg, "Weight", false),
+        });
+      }
+    }
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
+  return writes;
+}

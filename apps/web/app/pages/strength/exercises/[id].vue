@@ -50,7 +50,7 @@
 import { computed } from "vue";
 
 const route = useRoute();
-const { data, pending, error } = await useFetch(() => `/api/strength/exercises/${route.params.id}`);
+const { data, pending, error } = useApiFetch(() => `/api/strength/exercises/${route.params.id}`);
 
 const chartTitle = computed(() => {
   const metric = data.value?.series.metric;

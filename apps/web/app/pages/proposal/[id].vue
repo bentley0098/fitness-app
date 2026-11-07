@@ -62,7 +62,7 @@ import { computed, ref } from "vue";
 const SHORT: Intl.DateTimeFormatOptions = { weekday: "short", day: "numeric", month: "short" };
 
 const route = useRoute();
-const { data, pending, error, refresh } = await useFetch(`/api/plan-proposals/${route.params.id}`);
+const { data, pending, error, refresh } = useApiFetch(`/api/plan-proposals/${route.params.id}`);
 
 const busy = ref(false);
 const actionError = ref<string | null>(null);

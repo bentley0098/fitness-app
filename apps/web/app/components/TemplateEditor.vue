@@ -123,7 +123,7 @@ interface Initial {
 const props = defineProps<{ initial?: Initial | null }>();
 const emit = defineEmits<{ saved: [id: string] }>();
 
-const { data: libraryData } = await useFetch("/api/strength/exercises", { default: () => ({ exercises: [] }) });
+const { data: libraryData } = useApiFetch("/api/strength/exercises", { default: () => ({ exercises: [] }) });
 const library = computed(() => libraryData.value.exercises);
 
 interface SlotForm {

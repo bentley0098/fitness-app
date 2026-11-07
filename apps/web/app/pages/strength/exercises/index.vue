@@ -21,5 +21,5 @@
 </template>
 
 <script setup lang="ts">
-const { data, pending, error } = await useFetch("/api/strength/exercises");
+const { data, pending, error } = useApiFetch("/api/strength/exercises", { swr: true });
 </script>

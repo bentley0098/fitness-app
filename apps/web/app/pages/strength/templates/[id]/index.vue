@@ -59,7 +59,7 @@
 import { ref } from "vue";
 
 const route = useRoute();
-const { data, pending, error } = await useFetch(() => `/api/strength/templates/${route.params.id}`);
+const { data, pending, error } = useApiFetch(() => `/api/strength/templates/${route.params.id}`);
 
 // Defaults to today; pick an earlier day to log a session you forgot at the time.
 const today = useToday();

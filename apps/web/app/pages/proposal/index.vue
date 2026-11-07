@@ -41,5 +41,5 @@
 </template>
 
 <script setup lang="ts">
-const { data, pending, error } = await useFetch("/api/plan-proposals");
+const { data, pending, error } = useApiFetch("/api/plan-proposals");
 </script>

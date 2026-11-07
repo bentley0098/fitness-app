@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { mondayOf, weekDates } from "../../shared/utils/calendar";
+import { memoAsync } from "./memo";
 import {
   FIRST_WEEK_START,
   LAST_WEEK_START,
@@ -29,7 +30,11 @@ export interface PlanSnapshot {
   today: string;
 }
 
-export async function loadPlanSnapshot(today: string): Promise<PlanSnapshot> {
+export function loadPlanSnapshot(today: string): Promise<PlanSnapshot> {
+  return memoAsync(`plan-snapshot:${today}`, () => readPlanSnapshot(today));
+}
+
+async function readPlanSnapshot(today: string): Promise<PlanSnapshot> {
   const [{ data: sessionRows, error: sessionErr }, { data: activityRows, error: activityErr }, strengthLogs] = await Promise.all([
     db.from("plan_sessions").select("*").order("date", { ascending: true }),
     selectTolerant("activities", ACTIVITY_COLUMNS, ACTIVITY_BASE_COLUMNS, (cols) =>
@@ -162,6 +167,7 @@ export function buildOverview(snapshot: PlanSnapshot) {
           date: d.date,
           type: session.type,
           label: session.label,
+          typeLabel: typeLabel(session.type),
           targetDistanceM: session.targetDistanceM,
           state: session.completion.state,
           actualDistanceM: session.completion.actualDistanceM,

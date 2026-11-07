@@ -62,6 +62,7 @@
 const links = [
   { to: "/activity", label: "Activity", sub: "Every run synced from Garmin", icon: "run" },
   { to: "/more/trends", label: "Trends", sub: "Volume, workload ratio and verdict history", icon: "trend" },
+  { to: "/proposal", label: "Plan changes", sub: "Proposed changes to your plan and why", icon: "flag" },
   { to: "/more/log", label: "Log a note", sub: "Optional RPE and free text for today", icon: "note" },
 ];
 
@@ -72,5 +73,5 @@ const THEMES: { value: ThemeChoice; label: string }[] = [
 ];
 const { choice: theme, set: setTheme } = useTheme();
 
-const { data: health, pending, error } = await useFetch<Record<string, number | string>>("/api/health");
+const { data: health, pending, error } = useApiFetch<Record<string, number | string>>("/api/health");
 </script>

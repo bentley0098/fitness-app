@@ -77,6 +77,12 @@ export function humanizeType(type: string | null | undefined): string {
   if (!type) return DASH;
   const known: Record<string, string> = {
     easy_run: "Easy run",
+    recovery_run: "Recovery run",
+    aerobic_run: "Aerobic run",
+    tempo_run: "Tempo run",
+    threshold_run: "Threshold run",
+    mp_run: "MP run",
+    benchmark_run: "Benchmark",
     moderate_run: "Moderate run",
     quality_run: "Quality run",
     long_run: "Long run",

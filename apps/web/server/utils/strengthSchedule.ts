@@ -1,9 +1,12 @@
 import { addDaysIso, mondayOf, weekdayIndex } from "../../shared/utils/calendar";
 import { SEED_TEMPLATES } from "./strengthSeed";
 
-// When the seeded routines fall in the plan, and how a re-run of the seed
+// When the seeded gym routines fall in the plan, and how a re-run of the seed
 // reconciles with what is already scheduled. Pure: the seed script loads rows,
 // calls these, and writes whatever comes back.
+//
+// Physio routines are deliberately not scheduled: they are optional, started
+// from the Strength tab whenever the runner wants them.
 
 /** Marks planned strength sessions the seed created, so a re-run only ever touches those. */
 export const SEED_MARKER = "strength-seed";
@@ -18,17 +21,14 @@ export interface ScheduledSession {
 // 0 = Monday ... 6 = Sunday.
 const WEEKLY_PATTERN: { weekday: number; template: string }[] = [
   { weekday: 0, template: "Gym A" },
-  { weekday: 0, template: "Physio: ankle" },
-  { weekday: 2, template: "Physio: ankle" },
   { weekday: 4, template: "Gym B" },
-  { weekday: 6, template: "Physio: hips and core" },
 ];
 
 const KIND_BY_TEMPLATE = new Map(SEED_TEMPLATES.map((t) => [t.name, t.kind]));
 
 /**
- * The seeded routines on their weekdays, from today through the Sunday before
- * race week. Each takes the phase of its week in the plan, or the last phase
+ * The seeded gym routines on their weekdays, from today through the Sunday
+ * before race week. Each takes the phase of its week in the plan, or the last phase
  * seen if that week has no runs.
  */
 export function planStrengthSchedule(input: {
