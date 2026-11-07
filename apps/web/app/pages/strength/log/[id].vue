@@ -53,7 +53,7 @@
                   :row="exercise.rows[item.setIndex]!"
                   :exercise="exercise"
                   @toggle="onToggle(exercise, exercise.rows[item.setIndex]!, item.restAfter ? item.restSeconds : null)"
-                  @edit="onEdit(exercise, exercise.rows[item.setIndex]!)"
+                  @edit="onEdit(exercise, exercise.rows[item.setIndex]!, $event)"
                 />
               </ul>
               <ExerciseActions
@@ -97,7 +97,7 @@
                 :exercise="group.exercises[item.exercise]!"
                 :label="group.exercises[item.exercise]!.name"
                 @toggle="onToggle(group.exercises[item.exercise]!, group.exercises[item.exercise]!.rows[item.setIndex]!, item.restAfter ? item.restSeconds : null)"
-                @edit="onEdit(group.exercises[item.exercise]!, group.exercises[item.exercise]!.rows[item.setIndex]!)"
+                @edit="onEdit(group.exercises[item.exercise]!, group.exercises[item.exercise]!.rows[item.setIndex]!, $event)"
               />
             </ul>
           </section>
@@ -147,7 +147,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, toRaw, watch } from "vue";
-import { addRow, applyDraft, finishSnapshot, parseDraft, removeRow, toDraft } from "~/composables/strengthDraft";
+import { addRow, applyDraft, finishSnapshot, parseDraft, propagateEdit, removeRow, toDraft } from "~/composables/strengthDraft";
 import type { LogView } from "~~/server/utils/strengthLogs";
 
 const route = useRoute();
@@ -254,10 +254,12 @@ function onToggle(exercise: Exercise, row: Row, restSeconds: number | null = nul
 
 // An edit to an unlogged row is a draft until it is logged; in a finished
 // session an edit to a logged row saves straight away.
-function onEdit(exercise: Exercise, row: Row) {
+function onEdit(exercise: Exercise, row: Row, field: "reps" | "weightKg" | "holdSeconds") {
   saveError.value = null;
-  if (inProgress.value) saveDraft();
-  else if (row.logged) void saveFinished(exercise, row, true);
+  if (inProgress.value) {
+    propagateEdit(exercise, row.setIndex, field);
+    saveDraft();
+  } else if (row.logged) void saveFinished(exercise, row, true);
 }
 
 const rest = useRestTimer();
