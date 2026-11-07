@@ -1,4 +1,4 @@
-import { addDaysIso } from "./dates";
+import { addDaysIso, daysBetween, mondayOf } from "../../shared/utils/calendar";
 
 // Plan-wide constants and ISO-week arithmetic.
 //
@@ -13,23 +13,6 @@ export const RACE_NAME = "Barcelona Marathon";
 export const PLAN_START_MONDAY = "2026-09-07";
 export const TOTAL_WEEKS = 27;
 
-const MS_PER_DAY = 86_400_000;
-
-function toUtc(iso: string): Date {
-  return new Date(`${iso}T00:00:00Z`);
-}
-
-export function daysBetween(fromIso: string, toIso: string): number {
-  return Math.round((toUtc(toIso).getTime() - toUtc(fromIso).getTime()) / MS_PER_DAY);
-}
-
-/** The ISO Monday on or before `iso`. */
-export function mondayOf(iso: string): string {
-  const day = toUtc(iso).getUTCDay(); // 0 = Sunday
-  const backtrack = day === 0 ? 6 : day - 1;
-  return addDaysIso(iso, -backtrack);
-}
-
 /** 1-based plan week, clamped to [1, TOTAL_WEEKS] for dates outside the plan. */
 export function weekNumberFor(iso: string): number {
   const weeks = Math.floor(daysBetween(PLAN_START_MONDAY, mondayOf(iso)) / 7) + 1;
@@ -43,12 +26,6 @@ export function weekStartForNumber(n: number): string {
 
 export function weekEndForStart(startIso: string): string {
   return addDaysIso(startIso, 6);
-}
-
-/** The seven ISO dates of the week containing `iso`, Monday first. */
-export function weekDates(iso: string): string[] {
-  const start = mondayOf(iso);
-  return Array.from({ length: 7 }, (_, i) => addDaysIso(start, i));
 }
 
 export function daysUntilRace(todayIso: string): number {

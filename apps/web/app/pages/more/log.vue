@@ -16,6 +16,6 @@
 </template>
 
 <script setup lang="ts">
-const todayIso = new Date().toISOString().slice(0, 10);
+const todayIso = useToday();
 const today = new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 </script>

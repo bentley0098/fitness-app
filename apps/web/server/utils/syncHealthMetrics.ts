@@ -1,3 +1,4 @@
+import { DEFAULT_ZONE, addDaysIso, today } from "../../shared/utils/calendar";
 import { db } from "./db";
 import { garmin } from "./garmin";
 import { extractSleep } from "./garminSleep";
@@ -14,10 +15,6 @@ export interface HealthMetricsSyncResult {
 // types (via .passthrough()) — accessed here through a loosely-typed view,
 // same pattern as syncGarmin.ts.
 type Raw = Record<string, any>;
-
-function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
 
 function avgValidValues(pairs: [number, number | null][] | undefined): number | null {
   if (!pairs?.length) return null;
@@ -44,24 +41,23 @@ export async function syncHealthMetrics(days = 7): Promise<HealthMetricsSyncResu
   }
 
   const result: HealthMetricsSyncResult = { daysProcessed: 0, upserted: 0, errors: [] };
+  // No device behind a sync, so Today is Irish time.
+  const todayIso = today(new Date(), DEFAULT_ZONE);
 
   // One ranged call for the whole window. Garmin only lists days it recomputed
   // VO2 max, so a missing day is left out of the upsert entirely rather than
   // written as null — that would erase the value a previous run stored.
   let vo2ByDay = new Map<string, number>();
   try {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - (days - 1));
-    vo2ByDay = await fetchVo2MaxByDay(isoDate(start), isoDate(end));
+    vo2ByDay = await fetchVo2MaxByDay(addDaysIso(todayIso, -(days - 1)), todayIso);
   } catch (err) {
     result.errors.push(`vo2Max fetch failed — ${err instanceof Error ? err.message : String(err)}`);
   }
 
   for (let i = 0; i < days; i++) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
-    const day = isoDate(date);
+    const day = addDaysIso(todayIso, -i);
+    // Noon UTC, so the SDK reads the same calendar day whichever zone it formats in.
+    const date = new Date(`${day}T12:00:00Z`);
     result.daysProcessed++;
 
     // A failed endpoint stores null for that metric, but is reported in

@@ -1,5 +1,6 @@
 import { evaluate } from "@fitness/engine";
-import { addDaysIso, isoDate } from "../utils/dates";
+import { addDaysIso } from "../../shared/utils/calendar";
+import { requestToday } from "../utils/requestZone";
 import { loadTrainingWindow } from "../utils/trainingData";
 
 export default defineEventHandler(async (event) => {
@@ -7,7 +8,7 @@ export default defineEventHandler(async (event) => {
   const days = Number(query.days ?? 42);
 
   const window = await loadTrainingWindow();
-  const today = isoDate(new Date());
+  const today = requestToday(event);
 
   const series = [];
   for (let i = days - 1; i >= 0; i--) {

@@ -1,6 +1,6 @@
 import { db } from "./db";
+import { mondayOf, weekDates } from "../../shared/utils/calendar";
 import { memoAsync } from "./memo";
-import { isoDate } from "./dates";
 import {
   FIRST_WEEK_START,
   LAST_WEEK_START,
@@ -8,8 +8,6 @@ import {
   RACE_NAME,
   TOTAL_WEEKS,
   daysUntilRace,
-  mondayOf,
-  weekDates,
   weekEndForStart,
   weekNumberFor,
   weekStartForNumber,
@@ -32,11 +30,11 @@ export interface PlanSnapshot {
   today: string;
 }
 
-export function loadPlanSnapshot(): Promise<PlanSnapshot> {
-  return memoAsync("plan-snapshot", readPlanSnapshot);
+export function loadPlanSnapshot(today: string): Promise<PlanSnapshot> {
+  return memoAsync(`plan-snapshot:${today}`, () => readPlanSnapshot(today));
 }
 
-async function readPlanSnapshot(): Promise<PlanSnapshot> {
+async function readPlanSnapshot(today: string): Promise<PlanSnapshot> {
   const [{ data: sessionRows, error: sessionErr }, { data: activityRows, error: activityErr }, strengthLogs] = await Promise.all([
     db.from("plan_sessions").select("*").order("date", { ascending: true }),
     selectTolerant("activities", ACTIVITY_COLUMNS, ACTIVITY_BASE_COLUMNS, (cols) =>
@@ -52,7 +50,7 @@ async function readPlanSnapshot(): Promise<PlanSnapshot> {
     sessions: (sessionRows ?? []) as SessionLike[],
     activities: (activityRows ?? []) as ActivityLike[],
     strengthLogs,
-    today: isoDate(new Date()),
+    today,
   };
 }
 

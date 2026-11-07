@@ -1,4 +1,4 @@
-import { mondayOf } from "./planMeta";
+import { mondayOf } from "../../shared/utils/calendar";
 import { isStrengthType, targetDistanceM, type Prescription } from "./planLabels";
 import { exerciseKey, validateSlots, type Kind, type Measure, type TemplateSlot } from "./strength";
 

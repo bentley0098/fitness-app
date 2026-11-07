@@ -1,6 +1,5 @@
 import { evaluate } from "@fitness/engine";
 import { db } from "./db";
-import { isoDate } from "./dates";
 import { isStrengthType, sessionLabel, type Prescription } from "./planLabels";
 import {
   isExpired,
@@ -158,7 +157,7 @@ export interface CreatedProposal {
   volume: WeekVolume[];
 }
 
-export async function createProposal(requests: OperationRequest[], rationale: string): Promise<CreatedProposal> {
+export async function createProposal(requests: OperationRequest[], rationale: string, today: string): Promise<CreatedProposal> {
   const [sessions, library] = await Promise.all([loadPlannerSessions(), loadPlanLibrary()]);
 
   const snapshot = snapshotOperations(sessions, requests, library);
@@ -169,7 +168,7 @@ export async function createProposal(requests: OperationRequest[], rationale: st
   const plan = planApply(sessions, snapshot.operations, library);
   if (!plan.ok) throw new ProposalError(plan.message, 400);
 
-  const evaluation = evaluate(await loadTrainingWindow(), isoDate(new Date()));
+  const evaluation = evaluate(await loadTrainingWindow(), today);
 
   const { data, error } = await db
     .from("plan_proposals")
@@ -238,11 +237,11 @@ export async function rejectProposal(id: string): Promise<void> {
   await settle(id, "rejected", null);
 }
 
-export async function approveProposal(id: string): Promise<void> {
+export async function approveProposal(id: string, today: string): Promise<void> {
   const proposal = await loadProposal(id);
   if (proposal.status !== "pending") throw new ProposalError(`Proposal is already ${proposal.status}.`, 409);
 
-  if (isExpired(proposal.operations, isoDate(new Date()))) {
+  if (isExpired(proposal.operations, today)) {
     throw new ProposalError("This proposal has expired — a session it touches is already in the past.", 409);
   }
 
@@ -357,26 +356,26 @@ export async function approveProposal(id: string): Promise<void> {
 }
 
 /** Stored status, except a pending proposal whose dates have passed reads as expired. */
-function effectiveStatus(p: ProposalRow): string {
-  return p.status === "pending" && isExpired(p.operations, isoDate(new Date())) ? "expired" : p.status;
+function effectiveStatus(p: ProposalRow, today: string): string {
+  return p.status === "pending" && isExpired(p.operations, today) ? "expired" : p.status;
 }
 
 /** Proposals still waiting on a decision — what the banner counts. */
-export async function listPendingProposals(): Promise<{ id: string; rationale: string; createdAt: string }[]> {
+export async function listPendingProposals(today: string): Promise<{ id: string; rationale: string; createdAt: string }[]> {
   const { data, error } = await db.from("plan_proposals").select("*").eq("status", "pending").order("created_at", { ascending: false });
   if (error) throw new Error(`Load proposals failed: ${error.message}`);
   return ((data ?? []) as ProposalRow[])
-    .filter((p) => effectiveStatus(p) === "pending")
+    .filter((p) => effectiveStatus(p, today) === "pending")
     .map((p) => ({ id: p.id, rationale: p.rationale, createdAt: p.created_at }));
 }
 
 /** Pending proposal ids touching each session, for reads that should show what is already on the table. */
-export async function pendingProposalIdsBySession(): Promise<Map<string, string[]>> {
+export async function pendingProposalIdsBySession(today: string): Promise<Map<string, string[]>> {
   const { data, error } = await db.from("plan_proposals").select("*").eq("status", "pending");
   if (error) throw new Error(`Load proposals failed: ${error.message}`);
   const bySession = new Map<string, string[]>();
   for (const p of (data ?? []) as ProposalRow[]) {
-    if (effectiveStatus(p) !== "pending") continue;
+    if (effectiveStatus(p, today) !== "pending") continue;
     for (const op of p.operations) {
       if (!isSessionOperation(op)) continue;
       bySession.set(op.sessionId, [...(bySession.get(op.sessionId) ?? []), p.id]);
@@ -386,11 +385,11 @@ export async function pendingProposalIdsBySession(): Promise<Map<string, string[
 }
 
 /** The most recent decided or expired proposals, for the history list. */
-export async function listRecentProposals(limit = 20): Promise<{ id: string; rationale: string; status: string; createdAt: string }[]> {
+export async function listRecentProposals(today: string, limit = 20): Promise<{ id: string; rationale: string; status: string; createdAt: string }[]> {
   const { data, error } = await db.from("plan_proposals").select("*").order("created_at", { ascending: false }).limit(limit * 2);
   if (error) throw new Error(`Load proposals failed: ${error.message}`);
   return ((data ?? []) as ProposalRow[])
-    .map((p) => ({ id: p.id, rationale: p.rationale, status: effectiveStatus(p), createdAt: p.created_at }))
+    .map((p) => ({ id: p.id, rationale: p.rationale, status: effectiveStatus(p, today), createdAt: p.created_at }))
     .filter((p) => p.status !== "pending")
     .slice(0, limit);
 }
@@ -411,7 +410,7 @@ export interface ProposalView {
  * it is now; every other state shows the preview stored when it was made, so
  * an applied or rejected proposal still reads as it was proposed.
  */
-export async function viewProposal(id: string): Promise<ProposalView> {
+export async function viewProposal(id: string, today: string): Promise<ProposalView> {
   const proposal = await loadProposal(id);
 
   let preview: ProposalPreview = proposal.preview ?? { rows: [], volume: [] };
@@ -424,7 +423,7 @@ export async function viewProposal(id: string): Promise<ProposalView> {
   return {
     id: proposal.id,
     rationale: proposal.rationale,
-    status: effectiveStatus(proposal),
+    status: effectiveStatus(proposal, today),
     statusNote: proposal.status_note,
     engineVerdict: proposal.engine_verdict,
     createdAt: proposal.created_at,
